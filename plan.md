@@ -5,10 +5,12 @@ Independent monorepo for the complete active no-Tokio smol ecosystem. Repo `smol
 ## Status
 
 - Goal: one clean `smolith` repo with all 26 scoped components, consistent Laputa dependency graph, fixed known soundness bugs, qualified on primary platforms, proven via external consumer plus h12tiny fixture, with unified CI and verified release artifacts.
-- Last accepted: S06 (blocking, queues, helpers). Integrated suites passed on `main` at `26600ae`.
-- Accepted slices: S01, S02, S03, S04, S05, S06. Red: none. Parked: none.
-- Next: S07, then S07.5, then stop before S08.
-- Resume: S05 and S06 are on `main`. Their branches are deleted. Do not restart them.
+- Last accepted: S07.5 (Windows removed). S07 qualification is on `main`.
+- Accepted slices: S01, S02, S03, S04, S05, S06, S07, S07.5. Red: none. Parked: none.
+- Next: stop before S08.
+- Resume: S04 through S07.5 are on `main`. Do not restart them.
+- S07 platforms: macOS aarch64 execution (`cargo test --workspace` green). Linux glibc aarch64 execution in native Docker on pinned `nightly-2026-09-15` (`cargo test --workspace` green). Linux musl aarch64 execution for `cargo test --workspace --exclude laputa-smol`; the full musl workspace does not build because `openssl-sys` has no musl sysroot, so `laputa-smol` tests did not run there. Linux musl x86_64 is compile-only (no qemu); libs and tests that do not need a cross C compiler checked, and the full check stops on `x86_64-linux-musl-gcc` for criterion's `alloca`. ASan `wake_during_drop` and TSan `close_survives_force_push` passed on Linux glibc aarch64 with `-Zbuild-std`. Darwin ASan/TSan were not run. Windows is removed: `cargo check --workspace --all-targets --target x86_64-pc-windows-msvc` stops at `compile_error!`.
+- Linux `async-h1` and `surf` examples are stubs. `rustix` 0.37 does not compile on this nightly, and only those examples use it. They still build on macOS.
 
 ## Charter
 
@@ -72,7 +74,7 @@ Parallel lanes allowed only between disjoint ownership sets: S04 with S05, S04 w
 ## Needs environment
 
 - BSD/kqueue specifics beyond reachable macOS runners: owner runs `cargo test -p laputa-polling -p laputa-async-io` on the target BSD and reports.
-- Linux musl aarch64 plus glibc sanitizer runs if Docker is unavailable to the executor: owner runs the S07 workspace and sanitizer jobs per `.github/workflows/` and reports.
+- Linux musl x86_64 execution, and `laputa-smol` tests on musl aarch64: the first needs qemu or a musl cross C toolchain; the second needs a musl OpenSSL sysroot for `openssl-sys`.
 - Full h12tiny TLS plus HTTP/2 matrix on platforms the executor cannot reach: owner runs the S08 fixture script there and reports.
 
 ## Execution boundary and non-goals
@@ -86,4 +88,4 @@ Parallel lanes allowed only between disjoint ownership sets: S04 with S05, S04 w
 
 - Upstream scope verified 2026-10-29: facade `smol`, `smol-macros`; execution/IO `async-executor`, `async-task`, `async-io`, `polling`, `blocking`; OS `async-net`, `async-fs`, `async-process`, `async-signal`; sync `async-channel`, `async-broadcast`, `async-lock`, `event-listener`, `event-listener-strategy`, `concurrent-queue`, `parking`, `atomic-waker`, `piper`; helpers `futures-lite`, `fastrand`, `fastrand-contrib`, `easy-parallel`, `waker-fn`, `async-dup`. Out: `async-compat`, `.github`, archived `async-rustls`, `cache-padded`, `vec-arena`, `nb-connect`.
 - Mandatory bug entry points: executor teardown, task metadata, local-task pinning, reactor wakes, waker identity, blocking spawn/retirement/write-errors, queue close race, polling OS contracts, UDP peek, line readers, `StackSlot` bounds. Full per-issue detail belongs in `docs/LEDGER.md`.
-- Primary targets: Linux/musl x86_64, Linux/musl aarch64, macOS aarch64; sanitizers on Linux/glibc; Windows/BSD where available, else Needs environment.
+- Primary targets: Linux/musl x86_64, Linux/musl aarch64, macOS aarch64; sanitizers on Linux/glibc. Windows is out of scope after S07.5. BSD where available, else Needs environment.
