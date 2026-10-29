@@ -558,19 +558,18 @@ unsafe fn drop_future<F>(ptr: *const (), task_layout: &TaskLayout) {
 
 /// Wakes a waker.
 unsafe fn wake<S: Schedule<M>, M>(ptr: *const ()) {
-    let hooks = &*schedule_ref::<S>(ptr);
-    // Stay inside begin/end until drop_waker returns. A last-waker drop can publish another
-    // runnable, and that publication is still part of this wake.
-    hooks.begin_schedule();
-    let _end = EndSchedule(|| hooks.end_schedule());
-
-    // This is just an optimization. If the schedule function has captured variables, then
-    // we'll do less reference counting if we wake the waker by reference and then drop it.
+    // Captured schedule state lives in the task. drop_waker can destroy that
+    // task, so the bracket has to end before drop_waker. A publication from
+    // that drop goes through schedule, which opens its own bracket.
     if mem::size_of::<S>() > 0 {
         wake_by_ref::<S, M>(ptr);
         drop_waker(ptr);
         return;
     }
+
+    let hooks = &*schedule_ref::<S>(ptr);
+    hooks.begin_schedule();
+    let _end = EndSchedule(|| hooks.end_schedule());
 
     let header = ptr as *const Header;
 

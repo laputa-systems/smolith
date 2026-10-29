@@ -6,6 +6,20 @@ use std::thread;
 use async_executor::Executor;
 
 #[test]
+fn wake_of_a_completed_task_drops_its_schedule() {
+    let ex = Executor::new();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let task = ex.spawn(poll_fn(move |cx| {
+        let _ = sender.send(cx.waker().clone());
+        Poll::Ready(())
+    }));
+    assert!(ex.try_tick());
+    let waker = receiver.recv().unwrap();
+    drop(task);
+    waker.wake();
+}
+
+#[test]
 fn wake_during_drop() {
     for _ in 0..200 {
         let slot = Arc::new(Mutex::new(None));
