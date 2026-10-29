@@ -1,0 +1,23 @@
+[package]
+name = "smol-macros"
+version = "0.1.1"
+edition = "2021"
+rust-version = "1.85"
+authors = ["John Nunley <dev@notgull.net>"]
+description = "Macros for setting up a smol runtime"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/smol-rs/smol-macros"
+keywords = ["async", "await", "future", "io", "macro"]
+categories = ["asynchronous", "concurrency", "network-programming"]
+exclude = ["/.*"]
+
+[dependencies]
+async-executor = "1.6.0"
+async-io = "2.2.0"
+async-lock = "3.1.2"
+event-listener = "5.1.0"
+futures-lite = { version = "2.0.1", default-features = false }
+
+[dev-dependencies]
+async-lock = "3.1.2"
+macro_rules_attribute = "0.2.0"
