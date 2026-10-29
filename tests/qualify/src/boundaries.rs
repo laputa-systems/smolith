@@ -55,7 +55,7 @@ fn cancel_accept_then_connect() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let woke = Arc::new(AtomicBool::new(false));
-        let mut accept = std::pin::pin!(listener.accept());
+        let mut accept = Box::pin(listener.accept());
         let waker = Waker::from(Arc::new(AcceptWake(Arc::clone(&woke))));
         let mut context = Context::from_waker(&waker);
         assert!(accept.as_mut().poll(&mut context).is_pending());
