@@ -6,14 +6,24 @@
 //! cargo run --example async-h1-client
 //! ```
 
+// rustix 0.37, via async-h1, does not compile on this nightly for linux.
+#[cfg(target_os = "linux")]
+fn main() {}
+
+#[cfg(not(target_os = "linux"))]
 use std::net::{TcpStream, ToSocketAddrs};
 
+#[cfg(not(target_os = "linux"))]
 use anyhow::{bail, Context as _, Error, Result};
+#[cfg(not(target_os = "linux"))]
 use http_types::{Method, Request, Response};
+#[cfg(not(target_os = "linux"))]
 use smol::{prelude::*, Async};
+#[cfg(not(target_os = "linux"))]
 use url::Url;
 
 /// Sends a request and fetches the response.
+#[cfg(not(target_os = "linux"))]
 async fn fetch(req: Request) -> Result<Response> {
     // Figure out the host and the port.
     let host = req.url().host().context("cannot parse host")?.to_string();
@@ -45,6 +55,7 @@ async fn fetch(req: Request) -> Result<Response> {
     Ok(resp)
 }
 
+#[cfg(not(target_os = "linux"))]
 fn main() -> Result<()> {
     smol::block_on(async {
         // Create a request.

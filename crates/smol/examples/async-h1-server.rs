@@ -13,14 +13,24 @@
 //!
 //! Refer to `README.md` to see how the TLS certificate was generated.
 
+// rustix 0.37, via async-h1, does not compile on this nightly for linux.
+#[cfg(target_os = "linux")]
+fn main() {}
+
+#[cfg(not(target_os = "linux"))]
 use std::net::TcpListener;
 
+#[cfg(not(target_os = "linux"))]
 use anyhow::Result;
+#[cfg(not(target_os = "linux"))]
 use async_native_tls::{Identity, TlsAcceptor};
+#[cfg(not(target_os = "linux"))]
 use http_types::{Request, Response, StatusCode};
+#[cfg(not(target_os = "linux"))]
 use smol::{future, Async};
 
 /// Serves a request and returns a response.
+#[cfg(not(target_os = "linux"))]
 async fn serve(req: Request) -> http_types::Result<Response> {
     println!("Serving {}", req.url());
 
@@ -31,6 +41,7 @@ async fn serve(req: Request) -> http_types::Result<Response> {
 }
 
 /// Listens for incoming connections and serves them.
+#[cfg(not(target_os = "linux"))]
 async fn listen(listener: Async<TcpListener>, tls: Option<TlsAcceptor>) -> Result<()> {
     // Format the full host address.
     let host = match &tls {
@@ -77,6 +88,7 @@ async fn listen(listener: Async<TcpListener>, tls: Option<TlsAcceptor>) -> Resul
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn main() -> Result<()> {
     // Initialize TLS with the local certificate, private key, and password.
     let identity = Identity::from_pkcs12(include_bytes!("identity.pfx"), "password")?;

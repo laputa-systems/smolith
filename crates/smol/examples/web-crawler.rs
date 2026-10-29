@@ -6,15 +6,25 @@
 //! cargo run --example web-crawler
 //! ```
 
+// rustix 0.37, via surf, does not compile on this nightly for linux.
+#[cfg(target_os = "linux")]
+fn main() {}
+
+#[cfg(not(target_os = "linux"))]
 use std::collections::{HashSet, VecDeque};
 
+#[cfg(not(target_os = "linux"))]
 use anyhow::Result;
+#[cfg(not(target_os = "linux"))]
 use async_channel::{bounded, Sender};
+#[cfg(not(target_os = "linux"))]
 use scraper::{Html, Selector};
 
+#[cfg(not(target_os = "linux"))]
 const ROOT: &str = "https://www.rust-lang.org";
 
 /// Fetches the HTML contents of a web page.
+#[cfg(not(target_os = "linux"))]
 async fn fetch(url: String, sender: Sender<String>) {
     let body = surf::get(&url).recv_string().await;
     let body = body.unwrap_or_default();
@@ -22,6 +32,7 @@ async fn fetch(url: String, sender: Sender<String>) {
 }
 
 /// Extracts links from an HTML body.
+#[cfg(not(target_os = "linux"))]
 fn links(body: String) -> Vec<String> {
     let mut v = Vec::new();
     for elem in Html::parse_fragment(&body).select(&Selector::parse("a").unwrap()) {
@@ -32,6 +43,7 @@ fn links(body: String) -> Vec<String> {
     v
 }
 
+#[cfg(not(target_os = "linux"))]
 fn main() -> Result<()> {
     smol::block_on(async {
         let mut seen = HashSet::new();
