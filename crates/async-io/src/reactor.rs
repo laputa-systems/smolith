@@ -435,45 +435,56 @@ impl Source {
     ///
     /// If a different waker is already registered, it gets replaced and woken.
     fn poll_ready(&self, dir: usize, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        let mut state = self.state.lock().unwrap();
+        let mut displaced = None;
+        let result = {
+            let mut state = self.state.lock().unwrap();
 
-        // Check if the reactor has delivered an event.
-        if let Some((a, b)) = state[dir].ticks {
-            if state[dir].tick != a && state[dir].tick != b {
-                state[dir].ticks = None;
-                return Poll::Ready(Ok(()));
+            // Check if the reactor has delivered an event.
+            if let Some((a, b)) = state[dir].ticks {
+                if state[dir].tick != a && state[dir].tick != b {
+                    state[dir].ticks = None;
+                    return Poll::Ready(Ok(()));
+                }
             }
-        }
 
-        let was_empty = state[dir].is_empty();
+            let was_empty = state[dir].is_empty();
 
-        // Register the current task's waker.
-        if let Some(w) = state[dir].waker.take() {
-            if w.will_wake(cx.waker()) {
-                state[dir].waker = Some(w);
-                return Poll::Pending;
+            // Register the current task's waker.
+            if let Some(w) = state[dir].waker.take() {
+                if w.will_wake(cx.waker()) {
+                    state[dir].waker = Some(w);
+                    return Poll::Pending;
+                }
+                displaced = Some(w);
             }
-            // Wake the previous waker because it's going to get replaced.
+            state[dir].waker = Some(cx.waker().clone());
+            state[dir].ticks = Some((state[dir].tick, state[dir].tick));
+
+            // Update interest in this I/O handle.
+            if was_empty {
+                // Create the event that we are interested in.
+                let event = {
+                    let mut event = Event::none(self.key);
+                    event.readable = !state[READ].is_empty();
+                    event.writable = !state[WRITE].is_empty();
+                    event
+                };
+
+                // Register interest in it.
+                if let Err(err) = self.registration.modify(&Reactor::get().poller, event) {
+                    Poll::Ready(Err(err))
+                } else {
+                    Poll::Pending
+                }
+            } else {
+                Poll::Pending
+            }
+        };
+
+        if let Some(w) = displaced {
             panic::catch_unwind(|| w.wake()).ok();
         }
-        state[dir].waker = Some(cx.waker().clone());
-        state[dir].ticks = Some((state[dir].tick, state[dir].tick));
-
-        // Update interest in this I/O handle.
-        if was_empty {
-            // Create the event that we are interested in.
-            let event = {
-                let mut event = Event::none(self.key);
-                event.readable = !state[READ].is_empty();
-                event.writable = !state[WRITE].is_empty();
-                event
-            };
-
-            // Register interest in it.
-            self.registration.modify(&Reactor::get().poller, event)?;
-        }
-
-        Poll::Pending
+        result
     }
 
     /// Waits until the I/O source is readable.
