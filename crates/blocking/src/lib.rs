@@ -984,36 +984,26 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
 
                 // If writing, write more bytes into the pipe.
                 State::Writing(Some(writer), task) => {
-                    let mut accepted = None;
                     if !writer.is_closed() {
                         match writer.poll_fill(cx, buf) {
                             Poll::Pending => return Poll::Pending,
                             Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
-                            Poll::Ready(Ok(n)) if !writer.is_closed() => {
-                                return Poll::Ready(Ok(n));
-                            }
-                            Poll::Ready(Ok(n)) => accepted = Some(n),
+                            Poll::Ready(Ok(n)) if n > 0 => return Poll::Ready(Ok(n)),
+                            Poll::Ready(Ok(_)) => {}
                         }
                     }
 
                     match Pin::new(task).poll(cx) {
                         Poll::Pending => return Poll::Pending,
-                        Poll::Ready((res, io)) => Some((res, io, accepted)),
+                        Poll::Ready((res, io)) => Some((res, io)),
                     }
                 }
             };
 
-            if let Some((res, io, accepted)) = finished {
+            if let Some((res, io)) = finished {
                 self.state = State::Idle(Some(io));
                 match res {
-                    Ok(()) => {
-                        if let Some(n) = accepted {
-                            if n > 0 {
-                                return Poll::Ready(Ok(n));
-                            }
-                        }
-                        return Poll::Ready(Ok(0));
-                    }
+                    Ok(()) => return Poll::Ready(Ok(0)),
                     Err(err) => self.write_error = Some(err),
                 }
             }
