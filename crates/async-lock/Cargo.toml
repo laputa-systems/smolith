@@ -1,22 +1,25 @@
 [package]
-name = "async-lock"
+name = "laputa-async-lock"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v3.x.y" git tag
-version = "3.4.2"
+version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 edition = "2021"
-rust-version = "1.85"
+rust-version.workspace = true
 description = "Async synchronization primitives"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/async-lock"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["lock", "mutex", "rwlock", "semaphore", "barrier"]
 categories = ["asynchronous", "concurrency"]
 exclude = ["/.*"]
 
+[lib]
+name = "async_lock"
+
 [dependencies]
-event-listener = { version = "5.0.0", default-features = false }
-event-listener-strategy = { version = "0.5.0", default-features = false }
+event-listener = { workspace = true, default-features = false }
+event-listener-strategy = { workspace = true, default-features = false }
 pin-project-lite = "0.2.11"
 
 [target.'cfg(loom)'.dependencies]
@@ -31,10 +34,10 @@ loom = ["event-listener/loom", "dep:loom"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 
 [dev-dependencies]
-fastrand = "2.0.0"
+fastrand = { workspace = true }
 flume = "0.12.0"
-futures-lite = "2.0.0"
-waker-fn = "1.1.0"
+futures-lite = { workspace = true }
+waker-fn = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

@@ -1,24 +1,25 @@
 [package]
-name = "concurrent-queue"
+name = "laputa-concurrent-queue"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v2.x.y" git tag
-version = "2.5.0"
+version.workspace = true
 authors = [
     "Stjepan Glavina <stjepang@gmail.com>",
     "Taiki Endo <te316e89@gmail.com>",
     "John Nunley <dev@notgull.net>"
 ]
 edition = "2021"
-rust-version = "1.60"
+rust-version.workspace = true
 description = "Concurrent multi-producer multi-consumer queue"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/concurrent-queue"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["channel", "mpmc", "spsc", "spmc", "mpsc"]
 categories = ["concurrency"]
 exclude = ["/.*"]
 
 [lib]
+name = "concurrent_queue"
 bench = false
 
 [dependencies]
@@ -36,8 +37,8 @@ harness = false
 
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
-easy-parallel = "3.1.0"
-fastrand = "2.0.0"
+easy-parallel = { workspace = true }
+fastrand = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

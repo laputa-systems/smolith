@@ -1,19 +1,22 @@
 [package]
-name = "fastrand-contrib"
+name = "laputa-fastrand-contrib"
 # Make sure to modify CHANGELOG.md before releasing a new version.
-version = "0.1.0"
+version.workspace = true
 authors = ["John Nunley <dev@notgull.net>", "Petr Nevyhoštěný <petr.nevyhosteny@gmail.com>"]
 edition = "2018"
-rust-version = "1.43.0"
+rust-version.workspace = true
 description = "Extension functionality for fastrand"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/fastrand-contrib"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["simple", "fast", "rand", "random", "wyrand"]
 categories = ["algorithm"]
 exclude = ["/.*"]
 
+[lib]
+name = "fastrand_contrib"
+
 [dependencies]
-fastrand = { version = "2.0.0", default-features = false }
+fastrand = { workspace = true, default-features = false }
 libm_dep = { package = "libm", version = "0.2.7", optional = true }
 
 [features]

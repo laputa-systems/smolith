@@ -1,18 +1,18 @@
 [package]
-name = "parking"
+name = "laputa-parking"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v2.x.y" git tag
-version = "2.2.1"
+version.workspace = true
 authors = [
   "Stjepan Glavina <stjepang@gmail.com>",
   "The Rust Project Developers",
 ]
 edition = "2018"
-rust-version = "1.51"
+rust-version.workspace = true
 description = "Thread parking and unparking"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/parking"
+repository = "https://github.com/laputa-systems/smolith"
 homepage = "https://github.com/smol-rs/parking"
 documentation = "https://docs.rs/parking"
 keywords = ["park", "notify", "thread", "wake", "condition"]
@@ -22,6 +22,9 @@ exclude = ["/.*"]
 # The `loom` feature, combined with the `loom` rustflag, enables a reimplementation
 # of `parking` using `loom`. This feature is perma-unstable and should not be used
 # in stable code.
+[lib]
+name = "parking"
+
 [target.'cfg(loom)'.dependencies.loom]
 version = "0.7"
 optional = true
@@ -30,4 +33,4 @@ optional = true
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }
 
 [dev-dependencies]
-easy-parallel = "3.0.0"
+easy-parallel = { workspace = true }

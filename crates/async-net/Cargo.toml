@@ -1,22 +1,25 @@
 [package]
-name = "async-net"
+name = "laputa-async-net"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v2.x.y" git tag
-version = "2.0.0"
+version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 edition = "2021"
-rust-version = "1.71"
+rust-version.workspace = true
 description = "Async networking primitives for TCP/UDP/Unix communication"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/async-net"
+repository = "https://github.com/laputa-systems/smolith"
 homepage = "https://github.com/smol-rs/async-net"
 documentation = "https://docs.rs/async-net"
 keywords = ["networking", "uds", "mio", "reactor", "std"]
 categories = ["asynchronous", "network-programming", "os"]
 exclude = ["/.*"]
 
+[lib]
+name = "async_net"
+
 [dependencies]
-async-io = "2.0.0"
-blocking = "1.0.0"
-futures-lite = "2.0.0"
+async-io = { workspace = true }
+blocking = { workspace = true }
+futures-lite = { workspace = true }

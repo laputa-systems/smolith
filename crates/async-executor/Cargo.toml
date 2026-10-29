@@ -1,42 +1,45 @@
 [package]
-name = "async-executor"
+name = "laputa-async-executor"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v1.x.y" git tag
-version = "1.14.0"
+version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>", "John Nunley <dev@notgull.net>"]
 edition = "2021"
-rust-version = "1.63"
+rust-version.workspace = true
 description = "Async executor"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/async-executor"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["asynchronous", "executor", "single", "multi", "spawn"]
 categories = ["asynchronous", "concurrency"]
 exclude = ["/.*"]
+
+[lib]
+name = "async_executor"
 
 [features]
 # Adds support for executors optimized for use in static variables.
 static = []
 
 [dependencies]
-async-task = "4.4.0"
-concurrent-queue = "2.5.0"
-fastrand = "2.0.0"
-futures-lite = { version = "2.0.0", default-features = false }
+async-task = { workspace = true }
+concurrent-queue = { workspace = true }
+fastrand = { workspace = true }
+futures-lite = { workspace = true, default-features = false }
 pin-project-lite = "0.2"
 slab = "0.4.7"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-futures-lite = { version = "2.0.0", default-features = false, features = ["std"] }
+futures-lite = { workspace = true, default-features = false, features = ["std"] }
 
 [dev-dependencies]
-async-channel = "2.0.0"
-async-io = "2.1.0"
-async-lock = "3.0.0"
+async-channel = { workspace = true }
+async-io = { workspace = true }
+async-lock = { workspace = true }
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
-easy-parallel = "3.1.0"
-fastrand = "2.0.0"
-futures-lite = "2.0.0"
+easy-parallel = { workspace = true }
+fastrand = { workspace = true }
+futures-lite = { workspace = true }
 once_cell = "1.16.0"
 
 [[bench]]

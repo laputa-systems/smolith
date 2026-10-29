@@ -1,15 +1,15 @@
 [package]
-name = "event-listener"
+name = "laputa-event-listener"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v5.x.y" git tag
-version = "5.4.2"
+version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>", "John Nunley <dev@notgull.net>"]
 edition = "2021"
-rust-version = "1.60"
+rust-version.workspace = true
 description = "Notify async tasks or threads"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/event-listener"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["condvar", "eventcount", "wake", "blocking", "park"]
 categories = ["asynchronous", "concurrency"]
 exclude = ["/.*"]
@@ -32,7 +32,7 @@ pin-project-lite = "0.2.12"
 portable-atomic-util = { version = "0.2.0", default-features = false, optional = true, features = ["alloc"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-parking = { version = "2.0.0", optional = true }
+parking = { workspace = true, optional = true }
 
 [target.'cfg(loom)'.dependencies]
 loom = { version = "0.7", optional = true }
@@ -45,9 +45,9 @@ optional = true
 
 [dev-dependencies]
 critical-section = { version = "1.2.0", features = ["std"] }
-futures-lite = "2.0.0"
+futures-lite = { workspace = true }
 try-lock = "0.2.5"
-waker-fn = "1"
+waker-fn = { workspace = true }
 
 [dev-dependencies.criterion]
 version = "0.8"
@@ -62,4 +62,5 @@ name = "bench"
 harness = false
 
 [lib]
+name = "event_listener"
 bench = false

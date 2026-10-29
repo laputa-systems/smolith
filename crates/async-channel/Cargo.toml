@@ -1,22 +1,25 @@
 [package]
-name = "async-channel"
+name = "laputa-async-channel"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v2.x.y" git tag
-version = "2.5.0"
+version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 edition = "2021"
-rust-version = "1.60"
+rust-version.workspace = true
 description = "Async multi-producer multi-consumer channel"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/async-channel"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["mpmc", "mpsc", "spmc", "chan", "futures"]
 categories = ["asynchronous", "concurrency"]
 exclude = ["/.*"]
 
+[lib]
+name = "async_channel"
+
 [dependencies]
-concurrent-queue = { version = "2.5", default-features = false }
-event-listener-strategy = { version = "0.5.4", default-features = false }
+concurrent-queue = { workspace = true, default-features = false }
+event-listener-strategy = { workspace = true, default-features = false }
 futures-core = { version = "0.3.5", default-features = false }
 pin-project-lite = "0.2.11"
 
@@ -24,8 +27,8 @@ portable-atomic = { version = "1", default-features = false, features = ["requir
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"], optional = true }
 
 [dev-dependencies]
-easy-parallel = "3"
-futures-lite = "2"
+easy-parallel = { workspace = true }
+futures-lite = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3.37"

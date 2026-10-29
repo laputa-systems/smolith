@@ -1,21 +1,24 @@
 [package]
-name = "atomic-waker"
+name = "laputa-atomic-waker"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v1.x.y" git tag
-version = "1.1.2"
+version.workspace = true
 authors = [
   "Stjepan Glavina <stjepang@gmail.com>",
   "Contributors to futures-rs",
 ]
 edition = "2018"
-rust-version = "1.36"
+rust-version.workspace = true
 description = "A synchronization primitive for task wakeup"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/atomic-waker"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["waker", "notify", "wake", "futures", "async"]
 categories = ["asynchronous", "concurrency"]
 exclude = ["/.*"]
+
+[lib]
+name = "atomic_waker"
 
 [dependencies]
 # Uses portable-atomic polyfill atomics on targets without them

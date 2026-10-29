@@ -1,37 +1,40 @@
 [package]
-name = "async-process"
+name = "laputa-async-process"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v2.x.y" git tag
-version = "2.5.0"
+version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 edition = "2021"
-rust-version = "1.85"
+rust-version.workspace = true
 description = "Async interface for working with processes"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/async-process"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["process", "spawn", "command", "subprocess", "child"]
 categories = ["asynchronous", "os"]
 exclude = ["/.*"]
 
+[lib]
+name = "async_process"
+
 [dependencies]
-async-io = "2.3.0"
+async-io = { workspace = true }
 cfg-if = "1.0"
-event-listener = "5.1.0"
-futures-lite = "2.0.0"
+event-listener = { workspace = true }
+futures-lite = { workspace = true }
 tracing = { version = "0.1.40", default-features = false, optional = true }
 
 [target.'cfg(unix)'.dependencies]
-async-lock = "3.0.0"
-async-signal = "0.2.3"
+async-lock = { workspace = true }
+async-signal = { workspace = true }
 rustix = { version = "1.0", default-features = false, features = ["std", "fs", "process"] }
 
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
-async-channel = "2.0.0"
-async-task = "4.7.0"
+async-channel = { workspace = true }
+async-task = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-blocking = "1.0.0"
+blocking = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
@@ -40,7 +43,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [dev-dependencies]
-async-executor = "1.5.1"
+async-executor = { workspace = true }
 
 [target.'cfg(windows)'.dev-dependencies.windows-sys]
 version = "0.61"

@@ -1,18 +1,21 @@
 [package]
-name = "polling"
+name = "laputa-polling"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v3.x.y" git tag
-version = "3.11.0"
+version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>", "John Nunley <dev@notgull.net>"]
 edition = "2021"
-rust-version = "1.71"
+rust-version.workspace = true
 description = "Portable interface to epoll, kqueue, event ports, and IOCP"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/polling"
+repository = "https://github.com/laputa-systems/smolith"
 keywords = ["mio", "epoll", "kqueue", "iocp"]
 categories = ["asynchronous", "network-programming", "os"]
 exclude = ["/.*"]
+
+[lib]
+name = "polling"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
@@ -34,7 +37,7 @@ features = ["event", "fs", "pipe", "process", "std", "time"]
 default-features = false
 
 [target.'cfg(windows)'.dependencies]
-concurrent-queue = "2.2.0"
+concurrent-queue = { workspace = true }
 pin-project-lite = "0.2.9"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
@@ -56,8 +59,8 @@ features = [
 version = "0.5.0"
 
 [dev-dependencies]
-easy-parallel = "3.1.0"
-fastrand = "2.0.0"
+easy-parallel = { workspace = true }
+fastrand = { workspace = true }
 socket2 = "0.6.0"
 
 [target.'cfg(unix)'.dev-dependencies]

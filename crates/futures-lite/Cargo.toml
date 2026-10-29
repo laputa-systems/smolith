@@ -1,23 +1,26 @@
 [package]
-name = "futures-lite"
+name = "laputa-futures-lite"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v2.x.y" git tag
-version = "2.6.1"
+version.workspace = true
 authors = [
   "Stjepan Glavina <stjepang@gmail.com>",
   "Contributors to futures-rs",
 ]
 edition = "2021"
-rust-version = "1.68"
+rust-version.workspace = true
 description = "Futures, streams, and async I/O combinators"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/smol-rs/futures-lite"
+repository = "https://github.com/laputa-systems/smolith"
 homepage = "https://github.com/smol-rs/futures-lite"
 documentation = "https://docs.rs/futures-lite"
 keywords = ["asynchronous", "futures", "async"]
 categories = ["asynchronous", "concurrency"]
 exclude = ["/.*"]
+
+[lib]
+name = "futures_lite"
 
 [features]
 default = ["race", "std"]
@@ -26,13 +29,13 @@ alloc = []
 race = ["fastrand"]
 
 [dependencies]
-fastrand = { version = "2.0.0", optional = true, default-features = false }
+fastrand = { workspace = true, default-features = false, optional = true }
 futures-core = { version = "0.3.5", default-features = false }
 futures-io = { version = "0.3.5", optional = true }
 memchr = { version = "2.3.3", optional = true }
-parking = { version = "2.2.0", optional = true }
+parking = { workspace = true, optional = true }
 pin-project-lite = "0.2.0"
 
 [dev-dependencies]
 spin_on = "0.1.0"
-waker-fn = "1.0.0" # used in doctests
+waker-fn = { workspace = true }
