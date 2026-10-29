@@ -30,7 +30,7 @@ async-process = { workspace = true }
 
 [dev-dependencies]
 anyhow = "1"
-async-dup = { workspace = true }
+async-dup = { package = "laputa-async-dup", path = "../async-dup" }
 async-native-tls = "0.6"
 async-tungstenite = { version = "0.35", features = ["async-native-tls"] }
 ctrlc = "3"
@@ -45,7 +45,7 @@ native-tls = "0.2"
 scraper = "0.29"
 signal-hook = "0.4"
 smol-hyper = "0.1.0"
-smol-macros = { workspace = true }
+smol-macros = { package = "laputa-smol-macros", path = "../smol-macros" }
 tempfile = "3"
 url = "2"
 

@@ -24,8 +24,8 @@ portable-atomic = { version = "1", default-features = false, features = ["requir
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"], optional = true }
 
 [dev-dependencies]
-easy-parallel = { workspace = true }
-futures-lite = { workspace = true }
+easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3.37"

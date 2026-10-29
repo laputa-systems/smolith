@@ -37,4 +37,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [dev-dependencies]
-async-executor = { workspace = true }
+async-executor = { package = "laputa-async-executor", path = "../async-executor" }

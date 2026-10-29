@@ -34,6 +34,6 @@ pin-project-lite = "0.2.13"
 [dev-dependencies]
 criterion = "0.3.5"
 doc-comment = "0.3.3"
-easy-parallel = { workspace = true }
-futures-lite = { workspace = true }
+easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 futures-util = "0.3.21"

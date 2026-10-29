@@ -42,9 +42,9 @@ optional = true
 
 [dev-dependencies]
 critical-section = { version = "1.2.0", features = ["std"] }
-futures-lite = { workspace = true }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 try-lock = "0.2.5"
-waker-fn = { workspace = true }
+waker-fn = { package = "laputa-waker-fn", path = "../waker-fn" }
 
 [dev-dependencies.criterion]
 version = "0.8"

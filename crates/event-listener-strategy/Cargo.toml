@@ -25,7 +25,7 @@ std = ["event-listener/std"]
 portable-atomic = ["event-listener/portable-atomic"]
 
 [dev-dependencies]
-futures-lite = { workspace = true }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }

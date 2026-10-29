@@ -29,12 +29,12 @@ default-features = false
 optional = true
 
 [dev-dependencies]
-async-channel = { workspace = true }
-async-executor = { workspace = true }
-async-io = { workspace = true }
+async-channel = { package = "laputa-async-channel", path = "../async-channel" }
+async-executor = { package = "laputa-async-executor", path = "../async-executor" }
+async-io = { package = "laputa-async-io", path = "../async-io" }
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
-easy-parallel = { workspace = true }
-futures-lite = { workspace = true }
+easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 
 [[bench]]
 name = "pipe_comparison"

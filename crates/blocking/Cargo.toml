@@ -22,4 +22,4 @@ piper = { workspace = true }
 tracing = { version = "0.1.37", default-features = false, optional = true }
 
 [dev-dependencies]
-futures-lite = { workspace = true }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }

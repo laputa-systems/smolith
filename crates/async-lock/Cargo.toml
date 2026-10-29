@@ -31,10 +31,10 @@ loom = ["event-listener/loom", "dep:loom"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 
 [dev-dependencies]
-fastrand = { workspace = true }
+fastrand = { package = "laputa-fastrand", path = "../fastrand" }
 flume = "0.12.0"
-futures-lite = { workspace = true }
-waker-fn = { workspace = true }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
+waker-fn = { package = "laputa-waker-fn", path = "../waker-fn" }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

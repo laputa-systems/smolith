@@ -37,8 +37,8 @@ default-features = false
 version = "0.5.0"
 
 [dev-dependencies]
-easy-parallel = { workspace = true }
-fastrand = { workspace = true }
+easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
+fastrand = { package = "laputa-fastrand", path = "../fastrand" }
 socket2 = "0.6.0"
 
 [target.'cfg(unix)'.dev-dependencies]

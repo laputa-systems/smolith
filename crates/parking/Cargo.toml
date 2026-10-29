@@ -30,4 +30,4 @@ optional = true
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }
 
 [dev-dependencies]
-easy-parallel = { workspace = true }
+easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }

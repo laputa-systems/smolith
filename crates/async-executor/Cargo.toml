@@ -30,13 +30,13 @@ slab = "0.4.7"
 futures-lite = { workspace = true, default-features = false, features = ["std"] }
 
 [dev-dependencies]
-async-channel = { workspace = true }
-async-io = { workspace = true }
-async-lock = { workspace = true }
+async-channel = { package = "laputa-async-channel", path = "../async-channel" }
+async-io = { package = "laputa-async-io", path = "../async-io" }
+async-lock = { package = "laputa-async-lock", path = "../async-lock" }
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
-easy-parallel = { workspace = true }
-fastrand = { workspace = true }
-futures-lite = { workspace = true }
+easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
+fastrand = { package = "laputa-fastrand", path = "../fastrand" }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 once_cell = "1.16.0"
 
 [[bench]]

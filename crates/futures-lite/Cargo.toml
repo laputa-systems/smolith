@@ -35,4 +35,4 @@ pin-project-lite = "0.2.0"
 
 [dev-dependencies]
 spin_on = "0.1.0"
-waker-fn = { workspace = true }
+waker-fn = { package = "laputa-waker-fn", path = "../waker-fn" }

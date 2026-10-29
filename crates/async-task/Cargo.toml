@@ -23,11 +23,11 @@ std = []
 portable-atomic = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
-atomic-waker = { workspace = true }
-easy-parallel = { workspace = true }
+atomic-waker = { package = "laputa-atomic-waker", path = "../atomic-waker" }
+easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
 flaky_test = "0.2"
 flume = { version = "0.12", default-features = false }
-futures-lite = { workspace = true }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 once_cell = "1"
 pin-project-lite = "0.2.10"
 smol = { package = "laputa-smol", path = "../smol" }

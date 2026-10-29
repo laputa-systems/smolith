@@ -24,9 +24,9 @@ rustix = { version = "1.0.7", default-features = false, features = ["process", "
 signal-hook-registry = "1.4.0"
 
 [dev-dependencies]
-async-io = { workspace = true }
-fastrand = { workspace = true }
-futures-lite = { workspace = true }
+async-io = { package = "laputa-async-io", path = "../async-io" }
+fastrand = { package = "laputa-fastrand", path = "../fastrand" }
+futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 signal-hook = "0.4.1"
 
 [target.'cfg(unix)'.dev-dependencies]
