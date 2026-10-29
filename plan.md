@@ -5,10 +5,11 @@ Independent monorepo for the complete active no-Tokio smol ecosystem. Repo `smol
 ## Status
 
 - Goal: one clean `smolith` repo with all 26 scoped components, consistent Laputa dependency graph, fixed known soundness bugs, qualified on primary platforms, proven via external consumer plus h12tiny fixture, with unified CI and verified release artifacts.
-- Last accepted: S07.5 (Windows removed). S07 qualification is on `main`.
-- Accepted slices: S01, S02, S03, S04, S05, S06, S07, S07.5. Red: none. Parked: none.
-- Next: stop before S08.
-- Resume: S04 through S07.5 are on `main`. Do not restart them.
+- Last accepted: S08 (external consumer and h12tiny fixture) on macOS aarch64.
+- Accepted slices: S01, S02, S03, S04, S05, S06, S07, S07.5, S08. Red: none. Parked: none.
+- Next: S09.
+- Resume: S04 through S08 are on `main`. Do not restart them.
+- S08: `tests/consumer/check.sh` resolved owned crates to `laputa-*` path sources with shared `futures-io` and `futures-core` and no tokio; interop tests passed. `fixtures/h12tiny.sh` pinned `efeea1cd4fdc028c1f74fa853c96ae4e3bccd17e`. HTTP/1, HTTP/2, TLS, cancellation, reuse, timeout, and shutdown gates passed. Backpressure is a named gap: the only tests are tokio hyper and h2 harnesses outside the fixture workspace.
 - S07 platforms: macOS aarch64 execution (`cargo test --workspace` green). Linux glibc aarch64 execution in native Docker on pinned `nightly-2026-09-15` (`cargo test --workspace` green). Linux musl aarch64 execution for `cargo test --workspace --exclude laputa-smol`; the full musl workspace does not build because `openssl-sys` has no musl sysroot, so `laputa-smol` tests did not run there. Linux musl x86_64 is compile-only (no qemu); libs and tests that do not need a cross C compiler checked, and the full check stops on `x86_64-linux-musl-gcc` for criterion's `alloca`. ASan `wake_during_drop` and TSan `close_survives_force_push` passed on Linux glibc aarch64 with `-Zbuild-std`. Darwin ASan/TSan were not run. Windows is removed: `cargo check --workspace --all-targets --target x86_64-pc-windows-msvc` stops at `compile_error!`.
 - Linux `async-h1` and `surf` examples are stubs. `rustix` 0.37 does not compile on this nightly, and only those examples use it. They still build on macOS.
 
