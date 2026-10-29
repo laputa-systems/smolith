@@ -1878,13 +1878,23 @@ impl<R: AsyncBufRead> Stream for Lines<R> {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
 
-        let n = ready!(read_line_internal(
+        let read = ready!(read_line_internal(
             this.reader,
             cx,
             this.buf,
             this.bytes,
             this.read
-        ))?;
+        ));
+        let n = match read {
+            Ok(n) => n,
+            Err(err) if err.kind() == ErrorKind::InvalidData => {
+                this.buf.clear();
+                this.bytes.clear();
+                *this.read = 0;
+                return Poll::Ready(Some(Err(err)));
+            }
+            Err(err) => return Poll::Ready(Some(Err(err))),
+        };
         if n == 0 && this.buf.is_empty() {
             return Poll::Ready(None);
         }
@@ -1917,9 +1927,7 @@ fn read_line_internal<R: AsyncBufRead + ?Sized>(
         Err(err) => err.valid_up_to(),
     };
     let tail = bytes.split_off(valid_up_to);
-    let prefix = String::from_utf8(mem::take(bytes)).unwrap_or_else(|err| {
-        String::from_utf8_lossy(err.as_bytes()).into_owned()
-    });
+    let prefix = String::from_utf8(mem::take(bytes)).expect("valid_up_to ends on a char boundary");
     buf.push_str(&prefix);
     *bytes = tail;
     *read = 0;
@@ -3117,6 +3125,7 @@ mod tests {
 
     use super::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
 
+    use crate::ready;
     use crate::stream::StreamExt;
 
     struct ChunkThenErr {
@@ -3187,6 +3196,100 @@ mod tests {
             let err = bytes.read_line(&mut buf).await.unwrap_err();
             assert_eq!(err.kind(), ErrorKind::InvalidData);
             assert_eq!(buf, "pre:ok");
+        });
+    }
+
+    struct SplitUtf8 {
+        chunks: &'static [&'static [u8]],
+        index: usize,
+        offset: usize,
+        fail_after: usize,
+        reads: usize,
+    }
+
+    impl SplitUtf8 {
+        fn current(&self) -> Option<&'static [u8]> {
+            let chunk = self.chunks.get(self.index)?;
+            Some(&chunk[self.offset..])
+        }
+    }
+
+    impl AsyncRead for SplitUtf8 {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            let available = ready!(self.as_mut().poll_fill_buf(cx))?;
+            let n = buf.len().min(available.len());
+            buf[..n].copy_from_slice(&available[..n]);
+            self.consume(n);
+            Poll::Ready(Ok(n))
+        }
+    }
+
+    impl AsyncBufRead for SplitUtf8 {
+        fn poll_fill_buf(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::io::Result<&[u8]>> {
+            let this = self.get_mut();
+            if this.reads == this.fail_after {
+                this.reads += 1;
+                return Poll::Ready(Err(Error::new(ErrorKind::Interrupted, "again")));
+            }
+            Poll::Ready(Ok(this.current().unwrap_or(&[])))
+        }
+
+        fn consume(self: Pin<&mut Self>, amt: usize) {
+            let this = self.get_mut();
+            if amt == 0 {
+                return;
+            }
+            this.offset += amt;
+            this.reads += 1;
+            if this.current().is_none_or(|chunk| chunk.is_empty()) {
+                this.index += 1;
+                this.offset = 0;
+            }
+        }
+    }
+
+    #[test]
+    fn lines_recover_after_invalid_utf8() {
+        spin_on::spin_on(async {
+            let mut lines = (&b"bad\xff\nok\n"[..]).lines();
+            assert!(lines.next().await.unwrap().is_err());
+            assert_eq!(lines.next().await.unwrap().unwrap(), "ok");
+            assert!(lines.next().await.is_none());
+            assert!(lines.next().await.is_none());
+        });
+    }
+
+    #[test]
+    fn lines_malformed_final_line_then_eof() {
+        spin_on::spin_on(async {
+            let mut lines = (&b"bad\xff"[..]).lines();
+            assert!(lines.next().await.unwrap().is_err());
+            assert!(lines.next().await.is_none());
+        });
+    }
+
+    #[test]
+    fn lines_keep_partial_utf8_across_a_transient_error() {
+        spin_on::spin_on(async {
+            let mut reader = SplitUtf8 {
+                chunks: &[&[0xc3], &[0xa9], b"\n"],
+                index: 0,
+                offset: 0,
+                fail_after: 1,
+                reads: 0,
+            };
+            let mut lines = (&mut reader).lines();
+            let err = lines.next().await.unwrap().unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::Interrupted);
+            assert_eq!(lines.next().await.unwrap().unwrap(), "é");
+            assert!(lines.next().await.is_none());
         });
     }
 
