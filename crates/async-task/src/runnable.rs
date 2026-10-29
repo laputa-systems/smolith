@@ -376,12 +376,38 @@ impl<M> Builder<M> {
     /// // Create a task with the future and the schedule function.
     /// let (runnable, task) = Builder::new().spawn(|()| future, schedule);
     /// ```
+    ///
+    /// Metadata that is `Send + Sync` still spawns:
+    ///
+    /// ```
+    /// use async_task::Builder;
+    ///
+    /// let (runnable, task) = Builder::new().metadata(1u32).spawn(
+    ///     |meta| {
+    ///         let value = *meta;
+    ///         async move { value }
+    ///     },
+    ///     |_| {},
+    /// );
+    /// runnable.run();
+    /// assert_eq!(smol::future::block_on(task), 1);
+    /// ```
+    ///
+    /// ```compile_fail,E0277
+    /// use std::rc::Rc;
+    /// use async_task::Builder;
+    ///
+    /// let _ = Builder::new()
+    ///     .metadata(Rc::new(1u8))
+    ///     .spawn(|_| async {}, |_| {});
+    /// ```
     pub fn spawn<F, Fut, S>(self, future: F, schedule: S) -> (Runnable<M>, Task<Fut::Output, M>)
     where
         F: FnOnce(&M) -> Fut,
         Fut: Future + Send + 'static,
         Fut::Output: Send + 'static,
         S: Schedule<M> + Send + Sync + 'static,
+        M: Send + Sync,
     {
         unsafe {
             spawn_unchecked!(Fut, S, M, self, schedule, raw => { future(&(*raw.header).metadata) })
@@ -420,6 +446,15 @@ impl<M> Builder<M> {
     /// // Create a task with the future and the schedule function.
     /// let (runnable, task) = Builder::new().spawn_local(move |()| future, schedule);
     /// ```
+    ///
+    /// ```compile_fail,E0277
+    /// use std::rc::Rc;
+    /// use async_task::Builder;
+    ///
+    /// let _ = Builder::new()
+    ///     .metadata(Rc::new(1u8))
+    ///     .spawn_local(|_| async {}, |_| {});
+    /// ```
     #[cfg(feature = "std")]
     pub fn spawn_local<F, Fut, S>(
         self,
@@ -431,6 +466,7 @@ impl<M> Builder<M> {
         Fut: Future + 'static,
         Fut::Output: 'static,
         S: Schedule<M> + Send + Sync + 'static,
+        M: Send + Sync,
     {
         use std::mem::ManuallyDrop;
         use std::pin::Pin;
@@ -502,6 +538,8 @@ impl<M> Builder<M> {
     ///   must be used and dropped on the original thread.
     /// - If `schedule` is not `'static`, borrowed variables must outlive all instances of the
     ///   [`Runnable`]'s [`Waker`].
+    /// - If `M` is not [`Send`] + [`Sync`], every waker must be used and dropped on the thread
+    ///   that spawned the task, because a waker runs the schedule function and may drop `M`.
     ///
     /// # Examples
     ///
