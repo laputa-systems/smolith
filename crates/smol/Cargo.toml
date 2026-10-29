@@ -34,7 +34,6 @@ async-process = { workspace = true }
 [dev-dependencies]
 anyhow = "1"
 async-dup = { workspace = true }
-async-h1 = "2"
 async-native-tls = "0.6"
 async-tungstenite = { version = "0.35", features = ["async-native-tls"] }
 ctrlc = "3"
@@ -50,7 +49,6 @@ scraper = "0.29"
 signal-hook = "0.4"
 smol-hyper = "0.1.0"
 smol-macros = { workspace = true }
-surf = { version = "2", default-features = false, features = ["h1-client"] }
 tempfile = "3"
 url = "2"
 
@@ -58,3 +56,7 @@ url = "2"
 inotify = { version = "0.11", default-features = false }
 rustix = "1.0"
 timerfd = "1"
+
+[target.'cfg(not(target_os = "linux"))'.dev-dependencies]
+async-h1 = "2"
+surf = { version = "2", default-features = false, features = ["h1-client"] }
