@@ -320,11 +320,9 @@ impl Executor {
             let (lock, res) = self.cvar.wait_timeout(inner, timeout).unwrap();
             inner = lock;
 
-            // If there are too many threads active in the pool, stop this thread.
-            if (Some(inner.thread_count) > inner.thread_limit.map(NonZeroUsize::get))
-                // If there are no tasks after a while, stop this thread.
-                && (res.timed_out() && inner.queue.is_empty())
-            {
+            let over_limit =
+                Some(inner.thread_count) > inner.thread_limit.map(NonZeroUsize::get);
+            if inner.queue.is_empty() && (res.timed_out() || over_limit) {
                 inner.idle_count -= 1;
                 inner.thread_count -= 1;
                 break;
