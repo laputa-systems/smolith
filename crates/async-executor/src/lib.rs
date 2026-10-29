@@ -49,11 +49,11 @@ use core::fmt;
 use core::marker::PhantomData;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::Pin;
-use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::task::{Context, Poll, Waker};
-use std::sync::{Mutex, MutexGuard, PoisonError, RwLock, TryLockError};
+use std::sync::{Condvar, Mutex, MutexGuard, PoisonError, RwLock, TryLockError};
 
-use async_task::{Builder, Runnable};
+use async_task::{Builder, Runnable, ScheduleParts};
 use concurrent_queue::ConcurrentQueue;
 use futures_lite::{future, prelude::*};
 use pin_project_lite::pin_project;
@@ -61,6 +61,9 @@ use slab::Slab;
 
 #[cfg(feature = "static")]
 mod static_executors;
+
+#[cfg(test)]
+mod shutdown_test;
 
 #[doc(no_inline)]
 pub use async_task::{FallibleTask, Task};
@@ -268,10 +271,16 @@ impl<'a> Executor<'a> {
         // dropped on the origin thread.
         //
         // `future` is not `'static`, but we make sure that the `Runnable` does
-        // not outlive `'a`. When the executor is dropped, the `active` field is
-        // drained and all of the `Waker`s are woken. Then, the queue inside of
-        // the `Executor` is drained of all of its runnables. This ensures that
-        // runnables are dropped and this precondition is satisfied.
+        // not outlive `'a`. Drop sets `closed` and then waits until every wake
+        // that entered `begin_schedule` has reached the matching `end_schedule`.
+        // That bracket starts before the task is observed and stays open until a
+        // last-waker drop on the same wake finishes, so it covers the gap after
+        // the task is marked scheduled and before its runnable is queued. Active
+        // wakers are woken while the executor is closed. A runnable that arrives
+        // after `closed` is parked and dropped on this thread only after that
+        // wake has returned, so the schedule closure is not destroyed while it
+        // is running. `LocalExecutor` is `!Send`, so this thread is the one that
+        // spawned the future.
         //
         // `self.schedule()` is `Send`, `Sync` and `'static`, as checked below.
         // Therefore we do not need to worry about what is done with the
@@ -349,15 +358,26 @@ impl<'a> Executor<'a> {
     }
 
     /// Returns a function that schedules a runnable task when it gets woken up.
-    fn schedule(&self) -> impl Fn(Runnable) + Send + Sync + 'static {
-        let state = self.state_as_arc();
+    fn schedule(
+        &self,
+    ) -> ScheduleParts<
+        impl Fn() + Send + Sync + 'static,
+        impl Fn() + Send + Sync + 'static,
+        impl Fn(Runnable) + Send + Sync + 'static,
+        impl Fn() + Send + Sync + 'static,
+    > {
+        let begin = self.state_as_arc();
+        let before_enqueue = begin.clone();
+        let publish = begin.clone();
+        let end = begin.clone();
 
         // TODO: If possible, push into the current local queue and notify the ticker.
-        move |runnable| {
-            let result = state.queue.push(runnable);
-            debug_assert!(result.is_ok()); // Since we use unbounded queue, push will never fail.
-            state.notify();
-        }
+        ScheduleParts::new(
+            move || begin.begin_publish(),
+            move || before_enqueue.before_enqueue(),
+            move |runnable| publish.publish_runnable(runnable),
+            move || end.end_publish(),
+        )
     }
 
     /// Returns a pointer to the inner state.
@@ -420,13 +440,7 @@ impl Drop for Executor<'_> {
         // via Arc::into_raw in state_ptr.
         let state = unsafe { Arc::from_raw(ptr) };
 
-        let mut active = state.active();
-        for w in active.drain() {
-            w.wake();
-        }
-        drop(active);
-
-        while state.queue.pop().is_ok() {}
+        state.shutdown();
     }
 }
 
@@ -678,8 +692,13 @@ struct State {
     /// A list of sleeping tickers.
     sleepers: Mutex<Sleepers>,
 
-    /// Currently active tasks.
     active: Mutex<Slab<Waker>>,
+    publishing: AtomicUsize,
+    closed: AtomicBool,
+    #[cfg(test)]
+    pause_before_queue: AtomicBool,
+    late: Mutex<Vec<Runnable>>,
+    publish_cv: Condvar,
 }
 
 impl State {
@@ -695,7 +714,114 @@ impl State {
                 free_ids: Vec::new(),
             }),
             active: Mutex::new(Slab::new()),
+            publishing: AtomicUsize::new(0),
+            closed: AtomicBool::new(false),
+            #[cfg(test)]
+            pause_before_queue: AtomicBool::new(false),
+            late: Mutex::new(Vec::new()),
+            publish_cv: Condvar::new(),
         }
+    }
+
+    fn begin_publish(&self) {
+        self.publishing.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn end_publish(&self) {
+        let previous = self.publishing.fetch_sub(1, Ordering::AcqRel);
+        debug_assert!(previous > 0);
+        if previous == 1 {
+            let _guard = self.late();
+            self.publish_cv.notify_all();
+        }
+    }
+
+    fn before_enqueue(&self) {
+        #[cfg(test)]
+        self.pause_until_closed();
+    }
+
+    #[cfg(test)]
+    fn pause_until_closed(&self) {
+        if !self.pause_before_queue.load(Ordering::Acquire) {
+            return;
+        }
+        let mut guard = self.late();
+        while !self.closed.load(Ordering::Acquire) {
+            guard = self
+                .publish_cv
+                .wait(guard)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+
+    fn publish_runnable(&self, runnable: Runnable) {
+        if self.closed.load(Ordering::Acquire) {
+            // The runnable owns this schedule closure. Drop it only after the
+            // closure returns, from `shutdown`.
+            self.late().push(runnable);
+            return;
+        }
+
+        let result = self.queue.push(runnable);
+        debug_assert!(result.is_ok());
+        self.notify();
+    }
+
+    fn late(&self) -> MutexGuard<'_, Vec<Runnable>> {
+        self.late.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn shutdown(&self) {
+        {
+            let _guard = self.late();
+            self.closed.store(true, Ordering::Release);
+            self.publish_cv.notify_all();
+        }
+
+        let wakers = {
+            let mut active = self.active();
+            active.drain().collect::<Vec<_>>()
+        };
+        for waker in wakers {
+            waker.wake();
+        }
+
+        loop {
+            self.wait_until_idle();
+            let batch = self.take_runnables();
+            if batch.is_empty() {
+                break;
+            }
+            drop(batch);
+        }
+    }
+
+    fn wait_until_idle(&self) {
+        let mut guard = self.late();
+        while self.publishing.load(Ordering::Acquire) != 0 {
+            guard = self
+                .publish_cv
+                .wait(guard)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+
+    fn take_runnables(&self) -> Vec<Runnable> {
+        let mut batch = core::mem::take(&mut *self.late());
+        while let Ok(runnable) = self.queue.pop() {
+            batch.push(runnable);
+        }
+        let locals = self
+            .local_queues
+            .read()
+            .unwrap_or_else(PoisonError::into_inner);
+        for local in locals.iter() {
+            while let Ok(runnable) = local.pop() {
+                batch.push(runnable);
+            }
+        }
+        batch
     }
 
     /// Returns a reference to currently active tasks.
