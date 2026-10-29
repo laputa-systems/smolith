@@ -7,7 +7,7 @@ Workspace of the smol ecosystem. Published names are `laputa-*`. The facade is `
 - `cargo test --workspace` runs the suite, including doctests.
 - `cargo clippy --workspace --all-targets` is the lint. This repo has no rustfmt.
 - `tools/graph-gate.sh` checks owned edges: `laputa-*` 0.1.0, one version each, no `tokio` in normal or build dependencies.
-- `tools/advisory-scan.sh` maps `UPSTREAM.toml` through the RustSec database.
+- `tools/advisory-scan.sh` maps `UPSTREAM.toml` through the RustSec database, including optional normal features. `--offline` skips the refresh.
 - `tools/stage.sh` publishes every crate to a local registry and builds a fresh consumer from that index.
 - `tests/consumer/check.sh` checks an external path consumer.
 - `fixtures/h12tiny.sh` runs the pinned h12tiny gates. `H12TINY_MIRROR` selects the clone source.
