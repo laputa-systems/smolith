@@ -271,16 +271,15 @@ impl<'a> Executor<'a> {
         // dropped on the origin thread.
         //
         // `future` is not `'static`, but we make sure that the `Runnable` does
-        // not outlive `'a`. Drop sets `closed` and then waits until every wake
-        // that entered `begin_schedule` has reached the matching `end_schedule`.
-        // That bracket starts before the task is observed and stays open until a
-        // last-waker drop on the same wake finishes, so it covers the gap after
-        // the task is marked scheduled and before its runnable is queued. Active
-        // wakers are woken while the executor is closed. A runnable that arrives
-        // after `closed` is parked and dropped on this thread only after that
-        // wake has returned, so the schedule closure is not destroyed while it
-        // is running. `LocalExecutor` is `!Send`, so this thread is the one that
-        // spawned the future.
+        // not outlive `'a`. Drop sets `closed` and then waits until every wake,
+        // cancellation, or last-waker drop that entered `begin_schedule` has
+        // reached the matching `end_schedule`. That bracket starts before the
+        // state transition that commits to enqueueing. The task keeps a waker
+        // alive until `end_schedule` returns, including when that hook notifies
+        // a runner that drops this executor. Active wakers are woken while the
+        // executor is closed. A runnable that arrives after `closed` is parked
+        // and dropped on this thread. `LocalExecutor` is `!Send`, so this thread
+        // is the one that spawned the future.
         //
         // `self.schedule()` is `Send`, `Sync` and `'static`, as checked below.
         // Therefore we do not need to worry about what is done with the
@@ -694,6 +693,8 @@ struct State {
 
     active: Mutex<Slab<Waker>>,
     publishing: AtomicUsize,
+    /// A queued runnable still needs its runner waker invoked.
+    needs_notify: AtomicBool,
     closed: AtomicBool,
     #[cfg(test)]
     pause_before_queue: AtomicBool,
@@ -715,6 +716,7 @@ impl State {
             }),
             active: Mutex::new(Slab::new()),
             publishing: AtomicUsize::new(0),
+            needs_notify: AtomicBool::new(false),
             closed: AtomicBool::new(false),
             #[cfg(test)]
             pause_before_queue: AtomicBool::new(false),
@@ -731,8 +733,15 @@ impl State {
         let previous = self.publishing.fetch_sub(1, Ordering::AcqRel);
         debug_assert!(previous > 0);
         if previous == 1 {
-            let _guard = self.late();
-            self.publish_cv.notify_all();
+            {
+                let _guard = self.late();
+                self.publish_cv.notify_all();
+            }
+            // Runner wakers can drop the executor. The count is already zero, so
+            // that shutdown does not wait for this publication.
+            if self.needs_notify.swap(false, Ordering::AcqRel) {
+                self.notify();
+            }
         }
     }
 
@@ -765,7 +774,7 @@ impl State {
 
         let result = self.queue.push(runnable);
         debug_assert!(result.is_ok());
-        self.notify();
+        self.needs_notify.store(true, Ordering::Release);
     }
 
     fn late(&self) -> MutexGuard<'_, Vec<Runnable>> {
