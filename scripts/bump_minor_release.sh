@@ -655,7 +655,7 @@ bump_upstream_versions() {
         END { if (matches < 1) exit 1 }
     ' "$1" > "$temporary_manifest" || fail "$1 version changed or could not be updated"
     count=$(grep -c "^version = \"$3\"" "$temporary_manifest") || fail "could not verify $1"
-    expected=$(printf '%s\n' "$PKG_SPACE" | wc -l | tr -d ' ')
+    expected=$(printf '%s\n' "$PKG_SPACE" | wc -w | tr -d ' ')
     [ "$count" = "$expected" ] || fail "$1 has $count version $3 entries, expected $expected"
     mv "$temporary_manifest" "$1" || fail "could not install updated $1"
     temporary_manifest=
