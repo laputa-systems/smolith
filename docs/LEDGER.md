@@ -423,7 +423,7 @@
 | [#92](https://github.com/smol-rs/async-task/issues/92) | Non-blocking non-async cancel | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #92 |
 | [#77](https://github.com/smol-rs/async-task/issues/77) | overgeneral documentation | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #77 |
 | [#76](https://github.com/smol-rs/async-task/issues/76) | `Builder::spawn` should encode the metadata lifetime contract | Low | Feature / API Enhancement | Deferred (`Pin<&M>`). Non-`'static` metadata on the safe builders is M14. | Tracker #76 |
-| [#53](https://github.com/smol-rs/async-task/issues/53) | fails to test examples without feature std | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #53 |
+| [#53](https://github.com/smol-rs/async-task/issues/53) | fails to test examples without feature std | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #53 |
 | [#24](https://github.com/smol-rs/async-task/issues/24) | Custom allocators | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #24 |
 | [#22](https://github.com/smol-rs/async-task/issues/22) | Task not get rescheduled randomly | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #22 |
 | [#7](https://github.com/smol-rs/async-task/issues/7) | Support for statically allocating tasks (no_alloc usage) | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #7 |
@@ -578,7 +578,7 @@
 |:---|:---|:---|:---|:---|:---|
 | [#167](https://github.com/smol-rs/event-listener/issues/167) | Website in Readme and documentation no longer valid | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #167 |
 | [#159](https://github.com/smol-rs/event-listener/issues/159) | Send singular message without `Clone` | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #159 |
-| [#124](https://github.com/smol-rs/event-listener/issues/124) | Make the heapless API less prone to accidentally panicking | High | Candidate soundness fix | Evaluate in S04-S06 | Tracker #124 |
+| [#124](https://github.com/smol-rs/event-listener/issues/124) | Make the heapless API less prone to accidentally panicking | High | Candidate soundness fix | Open | Not investigated for 0.1.0. #124 |
 | [#43](https://github.com/smol-rs/event-listener/issues/43) | Code coverage | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #43 |
 
 #### Open Pull Requests
@@ -631,11 +631,11 @@
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
 | [#130](https://github.com/smol-rs/fastrand/issues/130) | Global RNG: seed with a slightly more unique identifier? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #130 |
-| [#128](https://github.com/smol-rs/fastrand/issues/128) | WyRand fails collisions tests—maybe switching to a generator with more state? | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #128 |
+| [#128](https://github.com/smol-rs/fastrand/issues/128) | WyRand fails collisions tests—maybe switching to a generator with more state? | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #128 |
 | [#123](https://github.com/smol-rs/fastrand/issues/123) | w1rand | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #123 |
 | [#101](https://github.com/smol-rs/fastrand/issues/101) | Auto-vectorization | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #101 |
 | [#40](https://github.com/smol-rs/fastrand/issues/40) | matklad's dream fastrand | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #40 |
-| [#20](https://github.com/smol-rs/fastrand/issues/20) | 1.5.0 changes random values with seeds | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #20 |
+| [#20](https://github.com/smol-rs/fastrand/issues/20) | 1.5.0 changes random values with seeds | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #20 |
 | [#13](https://github.com/smol-rs/fastrand/issues/13) | Performance optimizations | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #13 |
 
 #### Open Pull Requests
@@ -695,8 +695,8 @@
 | [#127](https://github.com/smol-rs/futures-lite/issues/127) | Add `get_ref` and `get_mut` to stream combinators | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #127 |
 | [#93](https://github.com/smol-rs/futures-lite/issues/93) | Add a trait for abstracing over executors | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #93 |
 | [#84](https://github.com/smol-rs/futures-lite/issues/84) | Recreating concurrent futures combinators in smol | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #84 |
-| [#83](https://github.com/smol-rs/futures-lite/issues/83) | Possible deadlock when using `smol::io::split` | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #83 |
-| [#67](https://github.com/smol-rs/futures-lite/issues/67) | Panic in read_line? | High | Candidate soundness fix | Evaluate in S04-S06 | Tracker #67 |
+| [#83](https://github.com/smol-rs/futures-lite/issues/83) | Possible deadlock when using `smol::io::split` | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #83 |
+| [#67](https://github.com/smol-rs/futures-lite/issues/67) | Panic in read_line? | High | Candidate soundness fix | Open | Not investigated for 0.1.0. #67 |
 | [#51](https://github.com/smol-rs/futures-lite/issues/51) | Add `dedupe()` to `StreamExt` | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #51 |
 | [#48](https://github.com/smol-rs/futures-lite/issues/48) | Accept async functions for `StreamExt::map()` and others | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #48 |
 | [#47](https://github.com/smol-rs/futures-lite/issues/47) | question: What is the proper way how to wait for a `BufReader::read_line` to finish? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #47 |
@@ -737,7 +737,7 @@
 
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
-| [#29](https://github.com/smol-rs/parking/issues/29) | Potential DeadLock Reported by Miri | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #29 |
+| [#29](https://github.com/smol-rs/parking/issues/29) | Potential DeadLock Reported by Miri | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #29 |
 | [#21](https://github.com/smol-rs/parking/issues/21) | Support passing values through the Mutex inside the parker | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #21 |
 | [#20](https://github.com/smol-rs/parking/issues/20) | Add support for WASM targets | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #20 |
 
@@ -759,7 +759,7 @@
 
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
-| [#33](https://github.com/smol-rs/piper/issues/33) | [compiler bug] piper fails to compile for Xtensa-based ESP32 targets | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #33 |
+| [#33](https://github.com/smol-rs/piper/issues/33) | [compiler bug] piper fails to compile for Xtensa-based ESP32 targets | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #33 |
 | [#4](https://github.com/smol-rs/piper/issues/4) | Threads | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #4 |
 
 #### Merged-Since-Release / Closed Bug Reports
@@ -786,10 +786,10 @@
 |:---|:---|:---|:---|:---|:---|
 | [#271](https://github.com/smol-rs/polling/issues/271) | IOCP: an update queued just as another thread starts waiting can be missed | Low | Removed | S07.5 | Windows support deleted. |
 | [#267](https://github.com/smol-rs/polling/issues/267) | Update to focused 0.100 windows crates to follow Microsoft guidance | Low | Removed | S07.5 | Windows support deleted. |
-| [#266](https://github.com/smol-rs/polling/issues/266) | `port::Poller::modify` and `delete` might be unsound. | High | Candidate soundness fix | Evaluate in S04-S06 | Tracker #266 |
-| [#262](https://github.com/smol-rs/polling/issues/262) | OpenBSD: kqueue fd accounting causing errors in Niri | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #262 |
+| [#266](https://github.com/smol-rs/polling/issues/266) | `port::Poller::modify` and `delete` might be unsound. | High | Candidate soundness fix | Open | Not investigated for 0.1.0. #266 |
+| [#262](https://github.com/smol-rs/polling/issues/262) | OpenBSD: kqueue fd accounting causing errors in Niri | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #262 |
 | [#254](https://github.com/smol-rs/polling/issues/254) | Is it possible to make the internal lock optional? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #254 |
-| [#253](https://github.com/smol-rs/polling/issues/253) | poller wait() code example does not delete() on earlier ? error return. | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #253 |
+| [#253](https://github.com/smol-rs/polling/issues/253) | poller wait() code example does not delete() on earlier ? error return. | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #253 |
 | [#245](https://github.com/smol-rs/polling/issues/245) | add new `io_uring` on linux? should be widely adopted enough since 2025 | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #245 |
 | [#227](https://github.com/smol-rs/polling/issues/227) | Support disjoint polls on separate threads | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #227 |
 | [#223](https://github.com/smol-rs/polling/issues/223) | Use kqueue on haiku | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #223 |
@@ -842,18 +842,18 @@
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
 | [#388](https://github.com/smol-rs/smol/issues/388) | Allow cancel a task without consume receiver | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #388 |
-| [#375](https://github.com/smol-rs/smol/issues/375) | `async_native_tls` / `native_tls` error when running `hyper-server` example | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #375 |
+| [#375](https://github.com/smol-rs/smol/issues/375) | `async_native_tls` / `native_tls` error when running `hyper-server` example | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #375 |
 | [#370](https://github.com/smol-rs/smol/issues/370) | Allow build executor | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #370 |
 | [#364](https://github.com/smol-rs/smol/issues/364) | Does a task-cancel interrupt a TcpStream read await? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #364 |
 | [#357](https://github.com/smol-rs/smol/issues/357) | Question: What is the difference between using `#![apply(smol_macros::main!)]` and `ex.spawn` as shown in the example, and using `async_global_executor::block_on(async { })` and `async_global_executor::spawn`? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #357 |
-| [#344](https://github.com/smol-rs/smol/issues/344) | Update minimal subcrates versions? | High | Candidate soundness fix | Evaluate in S04-S06 | Tracker #344 |
+| [#344](https://github.com/smol-rs/smol/issues/344) | Update minimal subcrates versions? | High | Candidate soundness fix | Open | Not investigated for 0.1.0. #344 |
 | [#329](https://github.com/smol-rs/smol/issues/329) | Question: does `smol` have something similar to `tokio::task_local!` and `async_std::task_local!`? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #329 |
 | [#317](https://github.com/smol-rs/smol/issues/317) | Better docs on multi-threaded executor | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #317 |
 | [#311](https://github.com/smol-rs/smol/issues/311) | Equivalent of `tokio::sync::watch` | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #311 |
 | [#310](https://github.com/smol-rs/smol/issues/310) | Expose async-broadcast in smol | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #310 |
 | [#308](https://github.com/smol-rs/smol/issues/308) | Equivalent of `tokio::task::JoinSet` | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #308 |
 | [#244](https://github.com/smol-rs/smol/issues/244) | Tracking issue for potentially useful features in future Rust versions | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #244 |
-| [#237](https://github.com/smol-rs/smol/issues/237) | smol::spawn: BrokenPipe io::copy failed | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #237 |
+| [#237](https://github.com/smol-rs/smol/issues/237) | smol::spawn: BrokenPipe io::copy failed | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #237 |
 | [#230](https://github.com/smol-rs/smol/issues/230) | TLS example should use `async_tls` instead of `async-native-tls` | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #230 |
 | [#223](https://github.com/smol-rs/smol/issues/223) | It's not clear how to use Executor instead of smol::spawn | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #223 |
 | [#220](https://github.com/smol-rs/smol/issues/220) | Parallel async read and write example | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #220 |
@@ -868,7 +868,7 @@
 |:---|:---|:---|:---|:---|:---|
 | [#386](https://github.com/smol-rs/smol/pull/386) | Document running a multi-threaded executor from main | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #386 |
 | [#385](https://github.com/smol-rs/smol/pull/385) | Update minimal versions of dependencies | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #385 |
-| [#379](https://github.com/smol-rs/smol/pull/379) | Refactor AsyncWrite implementation and enhance web crawler error handling | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #379 |
+| [#379](https://github.com/smol-rs/smol/pull/379) | Refactor AsyncWrite implementation and enhance web crawler error handling | Medium | Candidate bug fix | Open | Not investigated for 0.1.0. #379 |
 | [#158](https://github.com/smol-rs/smol/pull/158) | example: netlink crate | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #158 |
 
 #### Merged-Since-Release / Closed Bug Reports
@@ -891,7 +891,7 @@
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
 | [#14](https://github.com/smol-rs/smol-macros/issues/14) | Release v1.0.0 | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #14 |
-| [#13](https://github.com/smol-rs/smol-macros/issues/13) | Support `pub` functions in `main!` | High | Candidate soundness fix | Evaluate in S04-S06 | Tracker #13 |
+| [#13](https://github.com/smol-rs/smol-macros/issues/13) | Support `pub` functions in `main!` | High | Candidate soundness fix | Open | Not investigated for 0.1.0. #13 |
 | [#2](https://github.com/smol-rs/smol-macros/issues/2) | Add the ability to use futures_lite::future::block_on instead of async_io::block_on | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #2 |
 
 ### `laputa-waker-fn` (`waker-fn`)
