@@ -595,7 +595,7 @@ bump_workspace_version() {
     cp -p "$1" "$temporary_manifest" || fail "could not preserve Cargo.toml permissions"
     awk -v old="$2" -v new="$3" '
         /^[ \t]*\[workspace\.package\][ \t]*$/ { section = "package"; print; next }
-        /^[ \t]*\[workspace\.dependencies\][ \t]*$/ { section = "deps"; next }
+        /^[ \t]*\[workspace\.dependencies\][ \t]*$/ { section = "deps"; print; next }
         /^[ \t]*\[/ { section = ""; print; next }
         section == "package" {
             line = $0
