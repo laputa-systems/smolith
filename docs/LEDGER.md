@@ -261,8 +261,8 @@
 | [#62](https://github.com/smol-rs/async-io/issues/62) | avoid unnecessary poll `source.ready().await` when events happen immediately | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #62 |
 | [#40](https://github.com/smol-rs/async-io/issues/40) | Avoid spawning the async-io thread if possible | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #40 |
 | [#39](https://github.com/smol-rs/async-io/issues/39) | io_uring support | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #39 |
-| [#17](https://github.com/smol-rs/async-io/issues/17) | Use NT reserve objects | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #17 |
-| [#14](https://github.com/smol-rs/async-io/issues/14) | Support for Handles on Windows | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #14 |
+| [#17](https://github.com/smol-rs/async-io/issues/17) | Use NT reserve objects | Low | Removed | S07.5 | Windows support deleted. |
+| [#14](https://github.com/smol-rs/async-io/issues/14) | Support for Handles on Windows | Low | Removed | S07.5 | Windows support deleted. |
 
 #### Open Pull Requests
 
@@ -783,8 +783,8 @@
 
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
-| [#271](https://github.com/smol-rs/polling/issues/271) | IOCP: an update queued just as another thread starts waiting can be missed | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #271 |
-| [#267](https://github.com/smol-rs/polling/issues/267) | Update to focused 0.100 windows crates to follow Microsoft guidance | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #267 |
+| [#271](https://github.com/smol-rs/polling/issues/271) | IOCP: an update queued just as another thread starts waiting can be missed | Low | Removed | S07.5 | Windows support deleted. |
+| [#267](https://github.com/smol-rs/polling/issues/267) | Update to focused 0.100 windows crates to follow Microsoft guidance | Low | Removed | S07.5 | Windows support deleted. |
 | [#266](https://github.com/smol-rs/polling/issues/266) | `port::Poller::modify` and `delete` might be unsound. | High | Candidate soundness fix | Evaluate in S04-S06 | Tracker #266 |
 | [#262](https://github.com/smol-rs/polling/issues/262) | OpenBSD: kqueue fd accounting causing errors in Niri | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #262 |
 | [#254](https://github.com/smol-rs/polling/issues/254) | Is it possible to make the internal lock optional? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #254 |
@@ -793,16 +793,16 @@
 | [#227](https://github.com/smol-rs/polling/issues/227) | Support disjoint polls on separate threads | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #227 |
 | [#223](https://github.com/smol-rs/polling/issues/223) | Use kqueue on haiku | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #223 |
 | [#213](https://github.com/smol-rs/polling/issues/213) | Make it so `Event::is_interrupt` corresponds to EV_EOF on kqueue platforms | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #213 |
-| [#208](https://github.com/smol-rs/polling/issues/208) | Use ProcessSocketNotifications on Windows? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #208 |
+| [#208](https://github.com/smol-rs/polling/issues/208) | Use ProcessSocketNotifications on Windows? | Low | Removed | S07.5 | Windows support deleted. |
 | [#182](https://github.com/smol-rs/polling/issues/182) | A comparation with mio | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #182 |
 | [#181](https://github.com/smol-rs/polling/issues/181) | Flakey NetBSD test | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #181 |
 | [#178](https://github.com/smol-rs/polling/issues/178) | FortanixOS Support | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #178 |
 | [#165](https://github.com/smol-rs/polling/issues/165) | Use kqueue1 where available | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #165 |
-| [#141](https://github.com/smol-rs/polling/issues/141) | Use NtAssociateWaitCompletionPacket for waitable handles on Windows 10 | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #141 |
-| [#138](https://github.com/smol-rs/polling/issues/138) | Support the x86_64-uwp-windows-msvc target | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #138 |
-| [#121](https://github.com/smol-rs/polling/issues/121) | Figure out the optimal number of sockets to use per AFD handle | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #121 |
+| [#141](https://github.com/smol-rs/polling/issues/141) | Use NtAssociateWaitCompletionPacket for waitable handles on Windows 10 | Low | Removed | S07.5 | Windows support deleted. |
+| [#138](https://github.com/smol-rs/polling/issues/138) | Support the x86_64-uwp-windows-msvc target | Low | Removed | S07.5 | Windows support deleted. |
+| [#121](https://github.com/smol-rs/polling/issues/121) | Figure out the optimal number of sockets to use per AFD handle | Low | Removed | S07.5 | Windows support deleted. |
 | [#102](https://github.com/smol-rs/polling/issues/102) | WASI support? | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #102 |
-| [#97](https://github.com/smol-rs/polling/issues/97) | Support overlapped operations in Windows | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #97 |
+| [#97](https://github.com/smol-rs/polling/issues/97) | Support overlapped operations in Windows | Low | Removed | S07.5 | Windows support deleted. |
 | [#89](https://github.com/smol-rs/polling/issues/89) | Support the AIX operating system | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #89 |
 | [#37](https://github.com/smol-rs/polling/issues/37) | make `Poller` fork-safe | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #37 |
 
@@ -810,12 +810,12 @@
 
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
-| [#272](https://github.com/smol-rs/polling/pull/272) | Don't lose IOCP updates queued while a wait is starting | High | Mandatory target (S05) | S05 | Signal interruption test with concurrent poller wake on kqueue and epoll. |
+| [#272](https://github.com/smol-rs/polling/pull/272) | Don't lose IOCP updates queued while a wait is starting | High | Removed | S07.5 | IOCP backend removed. kqueue and epoll interruption coverage remains in `notify_clear.rs`. |
 | [#265](https://github.com/smol-rs/polling/pull/265) | fix(kqueue): preserve EV_CLEAR on EVFILT_USER notify and reset flag on EINTR | High | Mandatory target (S05) | S05 | Signal interruption test with concurrent poller wake on kqueue and epoll. |
 | [#264](https://github.com/smol-rs/polling/pull/264) | Replace pipe_with calls on AIX same as haiku,nto | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #264 |
-| [#263](https://github.com/smol-rs/polling/pull/263) | Fixed CompletionPort IO | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #263 |
-| [#248](https://github.com/smol-rs/polling/pull/248) | Add  file handle support for overlapped I/O | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #248 |
-| [#210](https://github.com/smol-rs/polling/pull/210) | feat: add `ProcessSocketNotifications` backend | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #210 |
+| [#263](https://github.com/smol-rs/polling/pull/263) | Fixed CompletionPort IO | Low | Removed | S07.5 | Windows support deleted. |
+| [#248](https://github.com/smol-rs/polling/pull/248) | Add  file handle support for overlapped I/O | Low | Removed | S07.5 | Windows support deleted. |
+| [#210](https://github.com/smol-rs/polling/pull/210) | feat: add `ProcessSocketNotifications` backend | Low | Removed | S07.5 | Windows support deleted. |
 | [#192](https://github.com/smol-rs/polling/pull/192) | DRAFT: trying to make add safe | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #192 |
 
 #### Merged-Since-Release / Closed Bug Reports
