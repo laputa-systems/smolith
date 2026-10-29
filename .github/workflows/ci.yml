@@ -103,3 +103,88 @@ jobs:
         run: cargo check --workspace --lib --tests --target x86_64-unknown-linux-musl --exclude laputa-smol
       - name: musl laputa-smol lib
         run: cargo check -p laputa-smol --lib --target x86_64-unknown-linux-musl
+
+  no-default-features:
+    name: no-default-features
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+      - name: isolated library checks
+        run: |
+          set -eu
+          check() {
+            cargo check --locked --lib -p "$@"
+          }
+          check laputa-futures-lite --no-default-features
+          check laputa-futures-lite --no-default-features --features alloc
+          check laputa-async-task --no-default-features
+          check laputa-async-task --no-default-features --features portable-atomic
+          check laputa-fastrand --no-default-features
+          check laputa-fastrand --no-default-features --features alloc
+          check laputa-atomic-waker --no-default-features
+          check laputa-atomic-waker --no-default-features --features portable-atomic
+          check laputa-waker-fn --no-default-features
+          check laputa-waker-fn --no-default-features --features portable-atomic
+          check laputa-concurrent-queue --no-default-features
+          check laputa-concurrent-queue --no-default-features --features portable-atomic
+          check laputa-event-listener --no-default-features
+          check laputa-event-listener --no-default-features --features portable-atomic
+          check laputa-event-listener-strategy --no-default-features
+          check laputa-event-listener-strategy --no-default-features --features portable-atomic
+          check laputa-piper --no-default-features
+          check laputa-piper --no-default-features --features portable-atomic
+          check laputa-async-channel --no-default-features
+          check laputa-async-channel --no-default-features --features portable-atomic
+
+  miri:
+    name: miri
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, miri
+      - name: setup
+        run: cargo miri setup
+      - name: task pinning, metadata, and teardown
+        run: |
+          cargo miri test --locked -p laputa-async-task --test local_task --test metadata
+          cargo miri test --locked -p laputa-async-executor --lib shutdown_test
+
+  loom:
+    name: loom
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+      - name: close during force_push
+        run: RUSTFLAGS='--cfg loom' cargo test --locked -p laputa-concurrent-queue --features loom --test loom close_during_force_push -- --test-threads=1
+
+  msrv:
+    name: rust 1.85
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: 1.85.0
+      - name: workspace libraries
+        run: cargo +1.85.0 check --workspace --lib --locked
+      - name: consumer
+        run: cargo +1.85.0 check --locked --manifest-path tests/consumer/Cargo.toml --tests

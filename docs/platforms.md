@@ -23,5 +23,5 @@ A Windows target hits `compile_error!` in `crates/polling/src/lib.rs`, `crates/a
 ## Still needs a machine
 
 - BSD, beyond the macOS kqueue path: `cargo test -p laputa-polling -p laputa-async-io`.
-- Linux musl x86_64 execution, and `laputa-smol` tests on musl aarch64. The first needs qemu or a musl cross C toolchain. The second needs a musl OpenSSL sysroot for `openssl-sys`.
+- Linux musl x86_64 execution, and `laputa-smol` tests on musl aarch64. The first needs qemu or a musl cross C toolchain. The second needs a musl OpenSSL sysroot for `openssl-sys`. CI compiles musl x86_64 and does not run those tests.
 - The h12tiny TLS and HTTP/2 gates on hosts this checkout cannot reach. Run `fixtures/h12tiny.sh` there.
