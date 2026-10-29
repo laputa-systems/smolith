@@ -5,20 +5,16 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 
 CONSUMER = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(CONSUMER, "..", ".."))
 MANIFEST = os.path.join(CONSUMER, "Cargo.toml")
 
 
-def jaq(expression, path):
-    result = subprocess.run(
-        ["jaq", "--from", "toml", "-r", expression, path],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    return [line for line in result.stdout.splitlines() if line]
+def toml_doc(path):
+    with open(path, "rb") as handle:
+        return tomllib.load(handle)
 
 
 def fail(message):
@@ -35,7 +31,7 @@ def assert_isolated():
     text = manifest_text()
     if "[patch" in text:
         fail("consumer manifest contains a [patch] table")
-    members = jaq(".workspace.members[]", os.path.join(ROOT, "Cargo.toml"))
+    members = toml_doc(os.path.join(ROOT, "Cargo.toml"))["workspace"]["members"]
     if "tests/consumer" in members or "tests/consumer/" in members:
         fail("tests/consumer is a smolith workspace member")
     if "[workspace]" not in text:
@@ -82,8 +78,9 @@ def closure(meta):
 
 
 def assert_graph(meta):
-    upstream = set(jaq(".components[].upstream_name", os.path.join(ROOT, "UPSTREAM.toml")))
-    laputa = set(jaq(".components[].package", os.path.join(ROOT, "UPSTREAM.toml")))
+    components = toml_doc(os.path.join(ROOT, "UPSTREAM.toml"))["components"]
+    upstream = {item["upstream_name"] for item in components.values()}
+    laputa = {item["package"] for item in components.values()}
     if len(upstream) != 26 or len(laputa) != 26:
         fail(f"expected 26 upstream components, got {len(upstream)} names and {len(laputa)} packages")
     found = {package["name"] for package in closure(meta)}

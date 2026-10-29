@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PIN = os.path.join(ROOT, "fixtures", "h12tiny.toml")
@@ -169,23 +170,16 @@ def cargo_env():
     return env
 
 
-def jaq_raw(expression, path):
-    result = subprocess.run(
-        ["jaq", "--from", "toml", "-r", expression, path],
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        sys.stderr.write(result.stderr)
-        fail(f"jaq failed for {path}")
-    return result.stdout.strip()
+def read_toml(path):
+    with open(path, "rb") as handle:
+        return tomllib.load(handle)
 
 
 def read_pin():
-    repo = jaq_raw(".repo", PIN)
-    commit = jaq_raw(".commit", PIN)
-    if not repo or not commit:
+    pin = read_toml(PIN)
+    repo = pin.get("repo")
+    commit = pin.get("commit")
+    if not isinstance(repo, str) or not repo or not isinstance(commit, str) or not commit:
         fail("fixtures/h12tiny.toml must set repo and commit")
     return repo, commit
 
@@ -276,13 +270,16 @@ def cargo_metadata(locked, features):
 
 
 def upstream_names():
-    result = subprocess.run(
-        ["jaq", "--from", "toml", "-r", ".components[].upstream_name", os.path.join(ROOT, "UPSTREAM.toml")],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    return {line for line in result.stdout.splitlines() if line}
+    components = read_toml(os.path.join(ROOT, "UPSTREAM.toml")).get("components")
+    if not isinstance(components, dict):
+        fail("UPSTREAM.toml is missing components")
+    names = set()
+    for name, item in components.items():
+        upstream = item.get("upstream_name") if isinstance(item, dict) else None
+        if not isinstance(upstream, str) or not upstream:
+            fail(f"UPSTREAM.toml component {name} is missing upstream_name")
+        names.add(upstream)
+    return names
 
 
 def registry_versions(meta):
