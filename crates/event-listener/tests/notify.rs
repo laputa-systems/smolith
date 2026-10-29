@@ -190,3 +190,24 @@ fn notify_all_fair() {
         .poll(&mut Context::from_waker(&waker3))
         .is_ready());
 }
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn stack_slot_send_tag_across_threads() {
+    use std::sync::mpsc;
+    use std::thread;
+
+    use event_listener::{listener, IntoNotification, Listener};
+
+    let event = Event::<i32>::with_tag();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    thread::scope(|scope| {
+        scope.spawn(|| {
+            listener!(event => listener);
+            ready_tx.send(()).unwrap();
+            assert_eq!(listener.wait(), 41);
+        });
+        ready_rx.recv().unwrap();
+        event.notify(1.tag(41));
+    });
+}
