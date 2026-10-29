@@ -99,13 +99,10 @@ macro_rules! impl_float_math_ext {
     };
 }
 
-// TAU constant was stabilized in Rust 1.47. Our current MSRV is 1.43.
 #[cfg(any(feature = "std", feature = "libm"))]
-#[allow(clippy::excessive_precision)]
-const F32_TAU: f32 = 6.28318530717958647692528676655900577_f32;
+const F32_TAU: f32 = core::f32::consts::TAU;
 #[cfg(any(feature = "std", feature = "libm"))]
-#[allow(clippy::excessive_precision)]
-const F64_TAU: f64 = 6.28318530717958647692528676655900577_f64;
+const F64_TAU: f64 = core::f64::consts::TAU;
 
 impl_float_ext!(f32);
 impl_float_ext!(f64);
