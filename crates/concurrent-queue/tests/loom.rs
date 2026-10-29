@@ -305,3 +305,25 @@ fn spsc_force() {
         handle.join().unwrap();
     });
 }
+
+#[test]
+fn close_during_force_push() {
+    loom::model(|| {
+        let queue = Arc::new(ConcurrentQueue::<usize>::bounded(1));
+        queue.push(1).unwrap();
+        let closer = Arc::clone(&queue);
+        let handle = thread::spawn(move || {
+            closer.close();
+        });
+        let _pushed = queue.force_push(2);
+        handle.join().unwrap();
+        assert!(queue.is_closed());
+        loop {
+            match queue.pop() {
+                Ok(_) => assert!(queue.is_closed()),
+                Err(PopError::Closed) => break,
+                Err(PopError::Empty) => panic!("closed queue reported empty"),
+            }
+        }
+    });
+}
