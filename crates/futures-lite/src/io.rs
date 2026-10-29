@@ -1907,26 +1907,29 @@ fn read_line_internal<R: AsyncBufRead + ?Sized>(
     read: &mut usize,
 ) -> Poll<Result<usize>> {
     let ret = ready!(read_until_internal(reader, cx, b'\n', bytes, read));
-
-    let utf8_err = || Error::new(ErrorKind::InvalidData, "stream did not contain valid UTF-8");
-
-    if buf.is_empty() {
-        let Ok(s) = String::from_utf8(mem::take(bytes)) else {
-            return Poll::Ready(ret.and_then(|_| Err(utf8_err())));
-        };
-        debug_assert_eq!(*read, 0);
-        *buf = s;
-        Poll::Ready(ret)
-    } else {
-        let Ok(s) = core::str::from_utf8(bytes) else {
+    let valid_up_to = match core::str::from_utf8(bytes) {
+        Ok(text) => {
+            buf.push_str(text);
             bytes.clear();
-            return Poll::Ready(ret.and_then(|_| Err(utf8_err())));
-        };
-        debug_assert_eq!(*read, 0);
-        buf.push_str(s);
-        bytes.clear();
-        Poll::Ready(ret)
+            *read = 0;
+            return Poll::Ready(ret);
+        }
+        Err(err) => err.valid_up_to(),
+    };
+    let tail = bytes.split_off(valid_up_to);
+    let prefix = String::from_utf8(mem::take(bytes)).unwrap_or_else(|err| {
+        String::from_utf8_lossy(err.as_bytes()).into_owned()
+    });
+    buf.push_str(&prefix);
+    *bytes = tail;
+    *read = 0;
+    if let Err(err) = ret {
+        return Poll::Ready(Err(err));
     }
+    Poll::Ready(Err(Error::new(
+        ErrorKind::InvalidData,
+        "stream did not contain valid UTF-8",
+    )))
 }
 
 pin_project! {
@@ -3108,7 +3111,52 @@ fn memchr(needle: u8, haystack: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::AsyncBufReadExt;
+    use std::io::{Error, ErrorKind};
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use super::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
+
+    use crate::stream::StreamExt;
+
+    struct ChunkThenErr {
+        data: &'static [u8],
+    }
+
+    impl AsyncRead for ChunkThenErr {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            if self.data.is_empty() {
+                return Poll::Ready(Err(Error::new(ErrorKind::BrokenPipe, "broken")));
+            }
+            let n = buf.len().min(self.data.len());
+            buf[..n].copy_from_slice(&self.data[..n]);
+            self.data = &self.data[n..];
+            Poll::Ready(Ok(n))
+        }
+    }
+
+    impl AsyncBufRead for ChunkThenErr {
+        fn poll_fill_buf(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::io::Result<&[u8]>> {
+            let this = self.get_mut();
+            if this.data.is_empty() {
+                Poll::Ready(Err(Error::new(ErrorKind::BrokenPipe, "broken")))
+            } else {
+                Poll::Ready(Ok(this.data))
+            }
+        }
+
+        fn consume(self: Pin<&mut Self>, amt: usize) {
+            let this = self.get_mut();
+            this.data = &this.data[amt..];
+        }
+    }
 
     #[test]
     fn non_empty_buffer() {
@@ -3117,6 +3165,43 @@ mod tests {
             let mut buf = std::string::String::from("bar");
             bytes.read_line(&mut buf).await.unwrap();
             assert_eq!(&buf, "barfoo");
+        });
+    }
+
+    #[test]
+    fn read_line_keeps_bytes_when_reader_fails() {
+        spin_on::spin_on(async {
+            let mut reader = ChunkThenErr { data: b"abc" };
+            let mut buf = std::string::String::from("pre:");
+            let err = reader.read_line(&mut buf).await.unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::BrokenPipe);
+            assert_eq!(buf, "pre:abc");
+        });
+    }
+
+    #[test]
+    fn read_line_invalid_utf8_keeps_valid_prefix() {
+        spin_on::spin_on(async {
+            let mut bytes = &b"ok\xffrest"[..];
+            let mut buf = std::string::String::from("pre:");
+            let err = bytes.read_line(&mut buf).await.unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidData);
+            assert_eq!(buf, "pre:ok");
+        });
+    }
+
+    #[test]
+    fn read_line_appends_full_line_and_lines_strips_newline() {
+        spin_on::spin_on(async {
+            let mut bytes = &b"line\n"[..];
+            let mut buf = std::string::String::from("pre:");
+            let n = bytes.read_line(&mut buf).await.unwrap();
+            assert_eq!(n, 5);
+            assert_eq!(buf, "pre:line\n");
+
+            let bytes = &b"line\n"[..];
+            let mut lines = bytes.lines();
+            assert_eq!(lines.next().await.unwrap().unwrap(), "line");
         });
     }
 }
