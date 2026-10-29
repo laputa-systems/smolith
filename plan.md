@@ -5,10 +5,10 @@ Independent monorepo for the complete active no-Tokio smol ecosystem. Repo `smol
 ## Status
 
 - Goal: one clean `smolith` repo with all 26 scoped components, consistent Laputa dependency graph, fixed known soundness bugs, qualified on primary platforms, proven via external consumer plus h12tiny fixture, with unified CI and verified release artifacts.
-- Last accepted: S02 (workspace identity and graph gate).
-- Accepted slices: S01, S02. Red: none. Parked: none.
-- Next: S03 (issue ledger).
-- Resume: run `git status --short --branch && git log --oneline -5`; start S03.
+- Last accepted: S03 (issue ledger).
+- Accepted slices: S01, S02, S03. Red: none. Parked: none.
+- Next: S04 (executor and task soundness) or S05/S06 parallel lanes.
+- Resume: run `git status --short --branch && git log --oneline -5`; start S04.
 
 ## Charter
 
