@@ -759,6 +759,9 @@ impl Poller {
                     // If the wait was interrupted by a signal, clear events and try again.
                     if e.kind() == io::ErrorKind::Interrupted {
                         events.clear();
+                        if self.notified.swap(false, Ordering::SeqCst) {
+                            self.poller.notify()?;
+                        }
                         continue;
                     } else {
                         return Err(e);

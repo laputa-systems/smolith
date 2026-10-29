@@ -477,7 +477,7 @@ mod notify {
                     flags: kqueue::UserFlags::TRIGGER,
                     user_flags: kqueue::UserDefinedFlags::new(0),
                 },
-                kqueue::EventFlags::ADD | kqueue::EventFlags::RECEIPT,
+                kqueue::EventFlags::ADD | kqueue::EventFlags::RECEIPT | kqueue::EventFlags::CLEAR,
                 crate::NOTIFY_KEY as _,
             )])?;
 

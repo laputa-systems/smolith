@@ -442,8 +442,6 @@ impl Source {
 
         // Check if the reactor has delivered an event.
         if let Some((a, b)) = state[dir].ticks {
-            // If `state[dir].tick` has changed to a value other than the old reactor tick,
-            // that means a newer reactor tick has delivered an event.
             if state[dir].tick != a && state[dir].tick != b {
                 state[dir].ticks = None;
                 return Poll::Ready(Ok(()));
@@ -462,7 +460,7 @@ impl Source {
             panic::catch_unwind(|| w.wake()).ok();
         }
         state[dir].waker = Some(cx.waker().clone());
-        state[dir].ticks = Some((Reactor::get().ticker(), state[dir].tick));
+        state[dir].ticks = Some((state[dir].tick, state[dir].tick));
 
         // Update interest in this I/O handle.
         if was_empty {
@@ -623,8 +621,6 @@ impl<H: Borrow<crate::Async<T>> + Clone, T> Future for Ready<H, T> {
 
         // Check if the reactor has delivered an event.
         if let Some((a, b)) = *ticks {
-            // If `state[dir].tick` has changed to a value other than the old reactor tick,
-            // that means a newer reactor tick has delivered an event.
             if state[*dir].tick != a && state[*dir].tick != b {
                 return Poll::Ready(Ok(()));
             }
@@ -638,7 +634,7 @@ impl<H: Borrow<crate::Async<T>> + Clone, T> Future for Ready<H, T> {
             None => {
                 let i = state[*dir].wakers.insert(None);
                 *index = Some(i);
-                *ticks = Some((Reactor::get().ticker(), state[*dir].tick));
+                *ticks = Some((state[*dir].tick, state[*dir].tick));
                 i
             }
         };
