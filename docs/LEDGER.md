@@ -64,6 +64,7 @@
 | M11 | [Concurrent queue close race with concurrent force_push](https://github.com/smol-rs/concurrent-queue/issues/82) | **S06** | `laputa-concurrent-queue` | **High** | Fixed. `force_push` keeps the close mark. | `5efbbfc` `close_survives_force_push` in `crates/concurrent-queue/tests/bounded.rs` (0 reopens in 5000 trials). |
 | M12 | [Line reader buffer corruption / mid-line error handling](https://github.com/smol-rs/futures-lite/issues/143) | **S06** | `laputa-futures-lite` | **Medium** | Fixed. `read_line` keeps the caller prefix, commits the valid UTF-8 prefix, and returns the I/O error. | `26e0ae8` tests in `crates/futures-lite/src/io.rs`. |
 | M13 | [StackSlot unbounded Send/Sync (RUSTSEC-2026-0221)](https://github.com/smol-rs/event-listener/pull/163) | **S06** | `laputa-event-listener` | **High** | Pinned import is 5.4.2. `StackSlot` is `Send` and `Sync` only when the tag is `Send`. | `4870f33` compile-fail doctests in `crates/event-listener/src/lib.rs` and the send test in `crates/event-listener/tests/notify.rs`. |
+| M14 | Task metadata `'static` on safe builders | post-campaign | `laputa-async-task` | **High** | Fixed. Safe `Builder::spawn` and `spawn_local` require `M: Send + Sync + 'static`. A `Waker` keeps the allocation alive after both handles drop. `spawn_unchecked` states that borrowed metadata must outlive that allocation. | Compile-fail doctests in `crates/async-task/src/runnable.rs`. `metadata_drop_waits_for_the_last_waker` in `crates/async-task/tests/metadata.rs`. |
 
 ## RustSec Advisory Register
 
@@ -421,7 +422,7 @@
 | [#100](https://github.com/smol-rs/async-task/issues/100) | Fix Send and Sync bounds for M to avoiding unsound behavior. | High | Mandatory target (S04) | S04 | Compile-fail test demonstrating !Send metadata leaking across threads without bounds. |
 | [#92](https://github.com/smol-rs/async-task/issues/92) | Non-blocking non-async cancel | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #92 |
 | [#77](https://github.com/smol-rs/async-task/issues/77) | overgeneral documentation | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #77 |
-| [#76](https://github.com/smol-rs/async-task/issues/76) | `Builder::spawn` should encode the metadata lifetime contract | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #76 |
+| [#76](https://github.com/smol-rs/async-task/issues/76) | `Builder::spawn` should encode the metadata lifetime contract | Low | Feature / API Enhancement | Deferred (`Pin<&M>`). Non-`'static` metadata on the safe builders is M14. | Tracker #76 |
 | [#53](https://github.com/smol-rs/async-task/issues/53) | fails to test examples without feature std | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #53 |
 | [#24](https://github.com/smol-rs/async-task/issues/24) | Custom allocators | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #24 |
 | [#22](https://github.com/smol-rs/async-task/issues/22) | Task not get rescheduled randomly | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #22 |

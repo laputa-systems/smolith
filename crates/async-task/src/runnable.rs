@@ -377,7 +377,7 @@ impl<M> Builder<M> {
     /// let (runnable, task) = Builder::new().spawn(|()| future, schedule);
     /// ```
     ///
-    /// Metadata that is `Send + Sync` still spawns:
+    /// Metadata that is `Send + Sync + 'static` still spawns:
     ///
     /// ```
     /// use async_task::Builder;
@@ -401,13 +401,23 @@ impl<M> Builder<M> {
     ///     .metadata(Rc::new(1u8))
     ///     .spawn(|_| async {}, |_| {});
     /// ```
+    ///
+    /// ```compile_fail,E0521
+    /// use async_task::Builder;
+    ///
+    /// fn spawn_borrowed(value: &u8) {
+    ///     let _ = Builder::new()
+    ///         .metadata(value)
+    ///         .spawn(|_| async {}, |_| {});
+    /// }
+    /// ```
     pub fn spawn<F, Fut, S>(self, future: F, schedule: S) -> (Runnable<M>, Task<Fut::Output, M>)
     where
         F: FnOnce(&M) -> Fut,
         Fut: Future + Send + 'static,
         Fut::Output: Send + 'static,
         S: Schedule<M> + Send + Sync + 'static,
-        M: Send + Sync,
+        M: Send + Sync + 'static,
     {
         unsafe {
             spawn_unchecked!(Fut, S, M, self, schedule, raw => { future(&(*raw.header).metadata) })
@@ -455,6 +465,16 @@ impl<M> Builder<M> {
     ///     .metadata(Rc::new(1u8))
     ///     .spawn_local(|_| async {}, |_| {});
     /// ```
+    ///
+    /// ```compile_fail,E0521
+    /// use async_task::Builder;
+    ///
+    /// fn spawn_borrowed(value: &u8) {
+    ///     let _ = Builder::new()
+    ///         .metadata(value)
+    ///         .spawn_local(|_| async {}, |_| {});
+    /// }
+    /// ```
     #[cfg(feature = "std")]
     pub fn spawn_local<F, Fut, S>(
         self,
@@ -466,7 +486,7 @@ impl<M> Builder<M> {
         Fut: Future + 'static,
         Fut::Output: 'static,
         S: Schedule<M> + Send + Sync + 'static,
-        M: Send + Sync,
+        M: Send + Sync + 'static,
     {
         use std::mem::ManuallyDrop;
         use std::pin::Pin;
@@ -531,7 +551,7 @@ impl<M> Builder<M> {
     /// Creates a new task without [`Send`], [`Sync`], and `'static` bounds.
     ///
     /// This function is same as [`spawn()`], except it does not require [`Send`], [`Sync`], and
-    /// `'static` on `future` and `schedule`.
+    /// `'static` on `future`, `schedule`, and the metadata.
     ///
     /// # Safety
     ///
@@ -544,6 +564,9 @@ impl<M> Builder<M> {
     ///   [`Runnable`]'s [`Waker`].
     /// - If `M` is not [`Send`] + [`Sync`], every waker must be used and dropped on the thread
     ///   that spawned the task, because a waker runs the schedule function and may drop `M`.
+    /// - If `M` is not `'static`, data borrowed by `M` must outlive the task allocation. A
+    ///   [`Waker`] from [`Runnable::waker`] keeps that allocation, and `M`, alive after the
+    ///   [`Runnable`] and [`Task`] have been dropped.
     ///
     /// # Examples
     ///

@@ -2,7 +2,30 @@ use async_task::{Builder, Runnable};
 use flume::unbounded;
 use smol::future;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+
+struct DropFlag(Arc<AtomicBool>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn metadata_drop_waits_for_the_last_waker() {
+    let dropped = Arc::new(AtomicBool::new(false));
+    let (runnable, task) = Builder::new()
+        .metadata(DropFlag(dropped.clone()))
+        .spawn(|_| async {}, |_| {});
+    let waker = runnable.waker();
+    drop(runnable);
+    drop(task);
+    assert!(!dropped.load(Ordering::SeqCst));
+    drop(waker);
+    assert!(dropped.load(Ordering::SeqCst));
+}
 
 #[test]
 fn metadata_use_case() {
