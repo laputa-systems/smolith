@@ -21,6 +21,12 @@ smol = { package = "laputa-smol", version = "0.1.0", path = "../smolith/crates/s
 
 The workspace `rust-version` is 1.85. A Windows target stops at `compile_error!` in `crates/polling`, `crates/async-io`, and `crates/async-signal`.
 
+## Upstream interfaces
+
+`futures-core`, `futures-io`, and `futures-sink` are the shared trait crates. Smolith implements those traits and leaves the crates upstream.
+
+`futures-channel` and `futures-util` are futures-rs crates. An application keeps them upstream. `futures-rustls` is the TLS adapter that connects those I/O traits to Rustls, and it stays upstream. Upstream archived `async-rustls` in favor of `futures-rustls`.
+
 ## License
 
 Each crate is Apache-2.0 OR MIT. The texts are `LICENSE-APACHE` and `LICENSE-MIT` in that crate's directory.
