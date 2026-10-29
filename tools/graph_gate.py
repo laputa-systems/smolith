@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 
 UPSTREAM_NAMES = [
     "smol", "smol-macros", "async-executor", "async-task", "async-io",
@@ -14,49 +15,145 @@ UPSTREAM_NAMES = [
 ]
 EXPECTED_LAPUTA = {f"laputa-{n}" for n in UPSTREAM_NAMES}
 ALLOWED_EXTRA_MEMBERS = {"smolith-qualify"}
+DEPENDENCY_TABLES = ("dependencies", "build-dependencies", "dev-dependencies")
+
+def load_toml(path):
+    with open(path, "rb") as handle:
+        return tomllib.load(handle)
+
+def iter_dependency_tables(doc):
+    yield from dependency_tables(doc)
+    targets = doc.get("target")
+    if isinstance(targets, dict):
+        for target_doc in targets.values():
+            if isinstance(target_doc, dict):
+                yield from dependency_tables(target_doc)
+
+def dependency_tables(doc):
+    for kind in DEPENDENCY_TABLES:
+        table = doc.get(kind)
+        if isinstance(table, dict):
+            yield kind, table
+
+def resolve_dependency(name, spec, workspace_deps):
+    if isinstance(spec, str):
+        return {"version": spec}
+    if not isinstance(spec, dict):
+        raise ValueError(f"dependency {name} has an unsupported specification")
+    if not spec.get("workspace"):
+        return spec
+    base = workspace_deps.get(name)
+    if isinstance(base, str):
+        merged = {"version": base}
+    elif isinstance(base, dict):
+        merged = dict(base)
+    else:
+        raise ValueError(f"dependency {name} sets workspace = true without a workspace.dependencies entry")
+    for key, value in spec.items():
+        if key != "workspace":
+            merged[key] = value
+    return merged
+
+def is_owned_edge(name, spec, upstream_names, laputa_names):
+    package = spec.get("package", name)
+    return name in upstream_names or package in upstream_names or package in laputa_names
+
+def versionless_owned_paths(doc, workspace_deps, upstream_names, laputa_names):
+    found = []
+    for kind, table in iter_dependency_tables(doc):
+        if kind == "dev-dependencies":
+            continue
+        for name, spec in table.items():
+            resolved = resolve_dependency(name, spec, workspace_deps)
+            if "path" not in resolved or "version" in resolved:
+                continue
+            if is_owned_edge(name, resolved, upstream_names, laputa_names):
+                found.append(f"[{kind}] {name}")
+    return found
 
 def check_no_patches(root_dir):
-    root_toml = os.path.join(root_dir, "Cargo.toml")
-    with open(root_toml, "r") as f:
-        content = f.read()
-    if "[patch" in content:
-        raise ValueError(f"Root Cargo.toml contains forbidden [patch] table")
-
+    paths = [os.path.join(root_dir, "Cargo.toml")]
     crates_dir = os.path.join(root_dir, "crates")
-    for c in os.listdir(crates_dir):
-        cp = os.path.join(crates_dir, c, "Cargo.toml")
-        if os.path.isfile(cp):
-            with open(cp, "r") as f:
-                c_content = f.read()
-            if "[patch" in c_content:
-                raise ValueError(f"{cp} contains forbidden [patch] table")
+    for name in os.listdir(crates_dir):
+        path = os.path.join(crates_dir, name, "Cargo.toml")
+        if os.path.isfile(path):
+            paths.append(path)
+    for path in paths:
+        if "patch" in load_toml(path):
+            raise ValueError(f"{path} contains a [patch] table")
 
 def check_member_manifests(root_dir):
+    workspace_deps = load_toml(os.path.join(root_dir, "Cargo.toml")).get("workspace", {}).get("dependencies", {})
     crates_dir = os.path.join(root_dir, "crates")
+    upstream_names = set(UPSTREAM_NAMES)
     for name in UPSTREAM_NAMES:
-        cp = os.path.join(crates_dir, name, "Cargo.toml")
-        if not os.path.isfile(cp):
-            raise ValueError(f"Missing member crate manifest: {cp}")
-        with open(cp, "r") as f:
-            lines = f.readlines()
+        path = os.path.join(crates_dir, name, "Cargo.toml")
+        if not os.path.isfile(path):
+            raise ValueError(f"Missing member crate manifest: {path}")
+        problems = versionless_owned_paths(load_toml(path), workspace_deps, upstream_names, EXPECTED_LAPUTA)
+        if problems:
+            raise ValueError(f"{path} has versionless path edges: {', '.join(problems)}")
 
-        in_dev = False
-        in_section = None
-        for line in lines:
-            line_s = line.strip()
-            if line_s.startswith("["):
-                in_section = line_s.strip("[]")
-                in_dev = "dev-dependencies" in in_section
-
-            # Versionless path check: only dev-dependencies may have versionless path edges
-            if not in_dev and in_section and ("dependencies" in in_section):
-                for dep in UPSTREAM_NAMES:
-                    laputa_dep = f"laputa-{dep}"
-                    if (f'"{laputa_dep}"' in line_s or f"'{laputa_dep}'" in line_s or line_s.startswith(f"{dep} ") or line_s.startswith(f"{dep}=")) and "path" in line_s:
-                        if "version" not in line_s and "workspace" not in line_s:
-                            raise ValueError(
-                                f"{cp} has versionless path edge in non-dev section [{in_section}]: {line_s}"
-                            )
+def self_check_manifests():
+    upstream = {"async-io", "futures-lite"}
+    laputa = {"laputa-async-io", "laputa-futures-lite"}
+    workspace_deps = {
+        "async-io": {"package": "laputa-async-io", "version": "0.1.0", "path": "crates/async-io"},
+    }
+    cases = (
+        (
+            True,
+            """
+            # a comment mentioning [patch.crates-io] is not a patch table
+            [dependencies.async-io]
+            package = "laputa-async-io"
+            path = "../async-io"
+            """,
+        ),
+        (
+            True,
+            """
+            [target.'cfg(unix)'.build-dependencies.async-io]
+            package = "laputa-async-io"
+            path = "../async-io"
+            """,
+        ),
+        (
+            False,
+            """
+            [dependencies]
+            async-io = { workspace = true }
+            """,
+        ),
+        (
+            False,
+            """
+            [dev-dependencies]
+            futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
+            """,
+        ),
+        (
+            False,
+            """
+            [dependencies]
+            libc = { path = "vendor/libc" }
+            """,
+        ),
+    )
+    for expect_hit, text in cases:
+        problems = versionless_owned_paths(tomllib.loads(text), workspace_deps, upstream, laputa)
+        if bool(problems) != expect_hit:
+            raise ValueError(f"manifest fixture mismatch: {problems!r} from {text.strip()}")
+    uncommented = tomllib.loads("# [patch.crates-io]\n[dependencies]\nlibc = \"0.2\"\n")
+    if "patch" in uncommented:
+        raise ValueError("a comment was parsed as a [patch] table")
+    patched = tomllib.loads("[patch.crates-io]\nlibc = { path = \"vendor/libc\" }\n")
+    if "patch" not in patched:
+        raise ValueError("a [patch] table was ignored")
+    bare = {"async-io": {"package": "laputa-async-io", "path": "crates/async-io"}}
+    inherited = tomllib.loads("[dependencies]\nasync-io = { workspace = true }\n")
+    if not versionless_owned_paths(inherited, bare, upstream, laputa):
+        raise ValueError("workspace inheritance hid a versionless path")
 
 def check_metadata(metadata_json, label=""):
     meta = json.loads(metadata_json)
@@ -144,6 +241,7 @@ def run_gate():
 
     # 1. Check manifests for patches and versionless edges
     print("Checking manifests for forbidden patches and versionless edges...")
+    self_check_manifests()
     check_no_patches(root_dir)
     check_member_manifests(root_dir)
     print("Manifest checks passed.")
