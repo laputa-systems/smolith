@@ -18,7 +18,7 @@
 //! wake appropriate futures blocked on I/O or timers when they can be resumed.
 //!
 //! To wait for the next I/O event, the "async-io" thread uses [epoll] on Linux/Android/illumos,
-//! [kqueue] on macOS/iOS/BSD, [event ports] on illumos/Solaris, and [IOCP] on Windows. That
+//! [kqueue] on macOS/iOS/BSD, and [event ports] on illumos/Solaris. That
 //! functionality is provided by the [`polling`] crate.
 //!
 //! However, note that you can also process I/O events and wake futures on any thread using the
@@ -28,7 +28,6 @@
 //! [epoll]: https://en.wikipedia.org/wiki/Epoll
 //! [kqueue]: https://en.wikipedia.org/wiki/Kqueue
 //! [event ports]: https://illumos.org/man/port_create
-//! [IOCP]: https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
 //! [`polling`]: https://docs.rs/polling
 //!
 //! # Examples
@@ -76,9 +75,6 @@ use std::{
     path::Path,
 };
 
-#[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, OwnedSocket, RawSocket};
-
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_lite::stream::{self, Stream};
 
@@ -105,8 +101,7 @@ pub use reactor::{Readable, ReadableOwned, Writable, WritableOwned};
 /// # Precision
 ///
 /// There is a limit on the maximum precision that a `Timer` can provide. This limit is
-/// dependent on the current platform; for instance, on Windows, the maximum precision is
-/// about 16 milliseconds. Because of this limit, the timer may sleep for longer than the
+/// dependent on the current platform. Because of this limit, the timer may sleep for longer than the
 /// requested duration. It will never sleep for less.
 ///
 /// # Examples
@@ -523,12 +518,11 @@ impl Stream for Timer {
 /// Async adapter for I/O types.
 ///
 /// This type puts an I/O handle into non-blocking mode, registers it in
-/// [epoll]/[kqueue]/[event ports]/[IOCP], and then provides an async interface for it.
+/// [epoll]/[kqueue]/[event ports], and then provides an async interface for it.
 ///
 /// [epoll]: https://en.wikipedia.org/wiki/Epoll
 /// [kqueue]: https://en.wikipedia.org/wiki/Kqueue
 /// [event ports]: https://illumos.org/man/port_create
-/// [IOCP]: https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
 ///
 /// # Caveats
 ///
@@ -634,15 +628,13 @@ impl<T: AsFd> Async<T> {
     /// Creates an async I/O handle.
     ///
     /// This method will put the handle in non-blocking mode and register it in
-    /// [epoll]/[kqueue]/[event ports]/[IOCP].
+    /// [epoll]/[kqueue]/[event ports].
     ///
-    /// On Unix systems, the handle must implement `AsFd`, while on Windows it must implement
-    /// `AsSocket`.
+    /// The handle must implement `AsFd`.
     ///
     /// [epoll]: https://en.wikipedia.org/wiki/Epoll
     /// [kqueue]: https://en.wikipedia.org/wiki/Kqueue
     /// [event ports]: https://illumos.org/man/port_create
-    /// [IOCP]: https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
     ///
     /// # Examples
     ///
@@ -664,15 +656,13 @@ impl<T: AsFd> Async<T> {
 
     /// Creates an async I/O handle without setting it to non-blocking mode.
     ///
-    /// This method will register the handle in [epoll]/[kqueue]/[event ports]/[IOCP].
+    /// This method will register the handle in [epoll]/[kqueue]/[event ports].
     ///
-    /// On Unix systems, the handle must implement `AsFd`, while on Windows it must implement
-    /// `AsSocket`.
+    /// The handle must implement `AsFd`.
     ///
     /// [epoll]: https://en.wikipedia.org/wiki/Epoll
     /// [kqueue]: https://en.wikipedia.org/wiki/Kqueue
     /// [event ports]: https://illumos.org/man/port_create
-    /// [IOCP]: https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
     ///
     /// # Caveats
     ///
@@ -716,102 +706,6 @@ impl<T: AsFd + From<OwnedFd>> TryFrom<OwnedFd> for Async<T> {
 
 #[cfg(unix)]
 impl<T: Into<OwnedFd>> TryFrom<Async<T>> for OwnedFd {
-    type Error = io::Error;
-
-    fn try_from(value: Async<T>) -> Result<Self, Self::Error> {
-        value.into_inner().map(Into::into)
-    }
-}
-
-#[cfg(windows)]
-impl<T: AsSocket> Async<T> {
-    /// Creates an async I/O handle.
-    ///
-    /// This method will put the handle in non-blocking mode and register it in
-    /// [epoll]/[kqueue]/[event ports]/[IOCP].
-    ///
-    /// On Unix systems, the handle must implement `AsFd`, while on Windows it must implement
-    /// `AsSocket`.
-    ///
-    /// [epoll]: https://en.wikipedia.org/wiki/Epoll
-    /// [kqueue]: https://en.wikipedia.org/wiki/Kqueue
-    /// [event ports]: https://illumos.org/man/port_create
-    /// [IOCP]: https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use async_io::Async;
-    /// use std::net::{SocketAddr, TcpListener};
-    ///
-    /// # futures_lite::future::block_on(async {
-    /// let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))?;
-    /// let listener = Async::new(listener)?;
-    /// # std::io::Result::Ok(()) });
-    /// ```
-    pub fn new(io: T) -> io::Result<Async<T>> {
-        // Put the socket in non-blocking mode.
-        set_nonblocking(io.as_socket())?;
-
-        Self::new_nonblocking(io)
-    }
-
-    /// Creates an async I/O handle without setting it to non-blocking mode.
-    ///
-    /// This method will register the handle in [epoll]/[kqueue]/[event ports]/[IOCP].
-    ///
-    /// On Unix systems, the handle must implement `AsFd`, while on Windows it must implement
-    /// `AsSocket`.
-    ///
-    /// [epoll]: https://en.wikipedia.org/wiki/Epoll
-    /// [kqueue]: https://en.wikipedia.org/wiki/Kqueue
-    /// [event ports]: https://illumos.org/man/port_create
-    /// [IOCP]: https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
-    ///
-    /// # Caveats
-    ///
-    /// The caller should ensure that the handle is set to non-blocking mode or that it is okay if
-    /// it is not set. If not set to non-blocking mode, I/O operations may block the current thread
-    /// and cause a deadlock in an asynchronous context.
-    pub fn new_nonblocking(io: T) -> io::Result<Async<T>> {
-        // Create the registration.
-        //
-        // SAFETY: It is impossible to drop the I/O source while it is registered through
-        // this type.
-        let registration = unsafe { Registration::new(io.as_socket()) };
-
-        Ok(Async {
-            source: Reactor::get().insert_io(registration)?,
-            io: Some(io),
-        })
-    }
-}
-
-#[cfg(windows)]
-impl<T: AsRawSocket> AsRawSocket for Async<T> {
-    fn as_raw_socket(&self) -> RawSocket {
-        self.get_ref().as_raw_socket()
-    }
-}
-
-#[cfg(windows)]
-impl<T: AsSocket> AsSocket for Async<T> {
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        self.get_ref().as_socket()
-    }
-}
-
-#[cfg(windows)]
-impl<T: AsSocket + From<OwnedSocket>> TryFrom<OwnedSocket> for Async<T> {
-    type Error = io::Error;
-
-    fn try_from(value: OwnedSocket) -> Result<Self, Self::Error> {
-        Async::new(value.into())
-    }
-}
-
-#[cfg(windows)]
-impl<T: Into<OwnedSocket>> TryFrom<Async<T>> for OwnedSocket {
     type Error = io::Error;
 
     fn try_from(value: Async<T>) -> Result<Self, Self::Error> {
@@ -2078,11 +1972,6 @@ fn connect(
     domain: rn::AddressFamily,
     protocol: Option<rn::Protocol>,
 ) -> io::Result<rustix::fd::OwnedFd> {
-    #[cfg(windows)]
-    use rustix::fd::AsFd;
-
-    setup_networking();
-
     #[cfg(any(
         target_os = "android",
         target_os = "dragonfly",
@@ -2116,7 +2005,6 @@ fn connect(
             target_vendor = "apple",
             target_os = "espidf",
             target_os = "haiku",
-            windows,
         )))]
         let flags = rn::SocketFlags::CLOEXEC;
         #[cfg(any(
@@ -2124,7 +2012,6 @@ fn connect(
             target_vendor = "apple",
             target_os = "espidf",
             target_os = "haiku",
-            windows,
         ))]
         let flags = rn::SocketFlags::empty();
 
@@ -2150,19 +2037,6 @@ fn connect(
     ))]
     rn::sockopt::set_socket_nosigpipe(&socket, true)?;
 
-    // Set the handle information to HANDLE_FLAG_INHERIT.
-    #[cfg(windows)]
-    unsafe {
-        if windows_sys::Win32::Foundation::SetHandleInformation(
-            socket.as_raw_socket() as _,
-            windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT,
-            windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT,
-        ) == 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-    }
-
     #[allow(unreachable_patterns)]
     match rn::connect(&socket, &addr) {
         Ok(_) => {}
@@ -2175,24 +2049,7 @@ fn connect(
 }
 
 #[inline]
-fn setup_networking() {
-    #[cfg(windows)]
-    {
-        // On Windows, we need to call WSAStartup before calling any networking code.
-        // Make sure to call it at least once.
-        static INIT: std::sync::Once = std::sync::Once::new();
-
-        INIT.call_once(|| {
-            let _ = rustix::net::wsa_startup();
-        });
-    }
-}
-
-#[inline]
-fn set_nonblocking(
-    #[cfg(unix)] fd: BorrowedFd<'_>,
-    #[cfg(windows)] fd: BorrowedSocket<'_>,
-) -> io::Result<()> {
+fn set_nonblocking(#[cfg(unix)] fd: BorrowedFd<'_>) -> io::Result<()> {
     cfg_if::cfg_if! {
         // ioctl(FIONBIO) sets the flag atomically, but we use this only on Linux
         // for now, as with the standard library, because it seems to behave
@@ -2200,7 +2057,7 @@ fn set_nonblocking(
         // https://github.com/rust-lang/rust/commit/efeb42be2837842d1beb47b51bb693c7474aba3d
         // https://github.com/libuv/libuv/blob/e9d91fccfc3e5ff772d5da90e1c4a24061198ca0/src/unix/poll.c#L78-L80
         // https://github.com/tokio-rs/mio/commit/0db49f6d5caf54b12176821363d154384357e70a
-        if #[cfg(any(windows, target_os = "linux"))] {
+        if #[cfg(target_os = "linux")] {
             rustix::io::ioctl_fionbio(fd, true)?;
         } else {
             let previous = rustix::fs::fcntl_getfl(fd)?;

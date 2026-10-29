@@ -22,8 +22,6 @@ On `unix`, this crate uses the [`signal_hook_registry`] crate to register a list
 
 Note that the internal pipe has a limited capacity. Once it has reached capacity, additional signals will be dropped.
 
-On Windows, a different implementation that only supports `SIGINT` is used. This implementation uses a channel to notify the user.
-
 [`signal_hook_registry`]: https://crates.io/crates/signal-hook-registry
 [`async-io`]: https://crates.io/crates/async-io
 

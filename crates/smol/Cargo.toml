@@ -58,6 +58,3 @@ url = "2"
 inotify = { version = "0.11", default-features = false }
 rustix = "1.0"
 timerfd = "1"
-
-[target.'cfg(windows)'.dev-dependencies]
-uds_windows = "1"

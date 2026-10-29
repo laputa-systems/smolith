@@ -18,10 +18,7 @@ use slab::Slab;
 
 // Choose the proper implementation of `Registration` based on the target platform.
 cfg_if::cfg_if! {
-    if #[cfg(windows)] {
-        mod windows;
-        pub use windows::Registration;
-    } else if #[cfg(any(
+    if #[cfg(any(
         target_vendor = "apple",
         target_os = "freebsd",
         target_os = "netbsd",
@@ -53,7 +50,7 @@ const WRITE: usize = 1;
 ///
 /// There is only one global instance of this type, accessible by [`Reactor::get()`].
 pub(crate) struct Reactor {
-    /// Portable bindings to epoll/kqueue/event ports/IOCP.
+    /// Portable bindings to epoll/kqueue/event ports.
     ///
     /// This is where I/O is polled, producing I/O events.
     pub(crate) poller: Poller,

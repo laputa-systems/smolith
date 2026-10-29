@@ -14,9 +14,6 @@
 //! Note that the internal pipe has a limited capacity. Once it has reached capacity, additional
 //! signals will be dropped.
 //!
-//! On Windows, a different implementation that only supports `SIGINT` is used. This implementation
-//! uses a channel to notify the user.
-//!
 //! [`signal_hook_registry`]: https://crates.io/crates/signal-hook-registry
 //! [`async-io`]: https://crates.io/crates/async-io
 //!
@@ -56,24 +53,11 @@
     html_logo_url = "https://raw.githubusercontent.com/smol-rs/smol/master/assets/images/logo_fullsize_transparent.png"
 )]
 
-cfg_if::cfg_if! {
-    if #[cfg(windows)] {
-        mod channel;
-        use channel as sys;
-    } else {
-        mod pipe;
-        use pipe as sys;
-    }
-}
+mod pipe;
+use pipe as sys;
 
-cfg_if::cfg_if! {
-    if #[cfg(unix)] {
-        use signal_hook_registry as registry;
-    } else if #[cfg(windows)] {
-        mod windows_registry;
-        use windows_registry as registry;
-    }
-}
+#[cfg(unix)]
+use signal_hook_registry as registry;
 
 use futures_core::ready;
 use futures_core::stream::Stream;
@@ -99,9 +83,10 @@ mod signum {
                 rustix::process::Signal::$rustix_name.as_raw()
             }
 
-            #[cfg(windows)]
+            #[cfg(not(unix))]
             {
-                $raw_value
+                let _ = $raw_value;
+                compile_error!("async-signal does not support this target OS");
             }
         }};
     }

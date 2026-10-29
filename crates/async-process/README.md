@@ -20,11 +20,9 @@ spawned child processes to exit and then calls the `wait()` syscall to clean up 
 processes. This is unlike the `process` API in the standard library, where dropping a running
 `Child` leaks its resources.
 
-This crate uses [`async-io`] for async I/O on Unix-like systems and [`blocking`] for async I/O
-on Windows.
+This crate uses [`async-io`] for async I/O on Unix-like systems.
 
 [`async-io`]: https://docs.rs/async-io
-[`blocking`]: https://docs.rs/blocking
 
 ## Examples
 

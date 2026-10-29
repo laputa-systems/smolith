@@ -9,11 +9,9 @@
 //! processes. This is unlike the `process` API in the standard library, where dropping a running
 //! `Child` leaks its resources.
 //!
-//! This crate uses [`async-io`] for async I/O on Unix-like systems and [`blocking`] for async I/O
-//! on Windows.
+//! This crate uses [`async-io`] for async I/O on Unix-like systems.
 //!
 //! [`async-io`]: https://docs.rs/async-io
-//! [`blocking`]: https://docs.rs/blocking
 //!
 //! # Examples
 //!
@@ -71,9 +69,6 @@ use async_io::Async;
 #[cfg(unix)]
 use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd};
 
-#[cfg(windows)]
-use blocking::Unblock;
-
 use futures_lite::{future, io, prelude::*};
 
 #[doc(no_inline)]
@@ -81,8 +76,6 @@ pub use std::process::{ExitStatus, Output, Stdio};
 
 #[cfg(unix)]
 pub mod unix;
-#[cfg(windows)]
-pub mod windows;
 
 mod reaper;
 
@@ -173,12 +166,7 @@ impl Reaper {
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(windows)] {
-        // Wraps a sync I/O type into an async I/O type.
-        fn wrap<T>(io: T) -> io::Result<Unblock<T>> {
-            Ok(Unblock::new(io))
-        }
-    } else if #[cfg(unix)] {
+    if #[cfg(unix)] {
         /// Wrap a file descriptor into a non-blocking I/O type.
         fn wrap<T: std::os::unix::io::AsFd>(io: T) -> io::Result<Async<T>> {
             Async::new(io)
@@ -443,10 +431,7 @@ impl fmt::Debug for Child {
 /// When a [`ChildStdin`] is dropped, the underlying handle gets closed. If the child process was
 /// previously blocked on input, it becomes unblocked after dropping.
 #[derive(Debug)]
-pub struct ChildStdin(
-    #[cfg(windows)] Unblock<std::process::ChildStdin>,
-    #[cfg(unix)] Async<std::process::ChildStdin>,
-);
+pub struct ChildStdin(#[cfg(unix)] Async<std::process::ChildStdin>);
 
 impl ChildStdin {
     /// Convert async_process::ChildStdin into std::process::Stdio.
@@ -469,9 +454,7 @@ impl ChildStdin {
     /// ```
     pub async fn into_stdio(self) -> io::Result<std::process::Stdio> {
         cfg_if::cfg_if! {
-            if #[cfg(windows)] {
-                Ok(self.0.into_inner().await.into())
-            } else if #[cfg(unix)] {
+            if #[cfg(unix)] {
                 let child_stdin = self.0.into_inner()?;
                 blocking_fd(rustix::fd::AsFd::as_fd(&child_stdin))?;
                 Ok(child_stdin.into())
@@ -521,21 +504,11 @@ impl TryFrom<ChildStdin> for OwnedFd {
     }
 }
 
-// TODO(notgull): Add mirroring AsRawHandle impls for all of the child handles
-//
-// at the moment this is pretty hard to do because of how they're wrapped in
-// Unblock, meaning that we can't always access the underlying handle. async-fs
-// gets around this by putting the handle in an Arc, but there's still some decision
-// to be made about how to handle this (no pun intended)
-
 /// A handle to a child process's standard output (stdout).
 ///
 /// When a [`ChildStdout`] is dropped, the underlying handle gets closed.
 #[derive(Debug)]
-pub struct ChildStdout(
-    #[cfg(windows)] Unblock<std::process::ChildStdout>,
-    #[cfg(unix)] Async<std::process::ChildStdout>,
-);
+pub struct ChildStdout(#[cfg(unix)] Async<std::process::ChildStdout>);
 
 impl ChildStdout {
     /// Convert async_process::ChildStdout into std::process::Stdio.
@@ -561,9 +534,7 @@ impl ChildStdout {
     /// ```
     pub async fn into_stdio(self) -> io::Result<std::process::Stdio> {
         cfg_if::cfg_if! {
-            if #[cfg(windows)] {
-                Ok(self.0.into_inner().await.into())
-            } else if #[cfg(unix)] {
+            if #[cfg(unix)] {
                 let child_stdout = self.0.into_inner()?;
                 blocking_fd(rustix::fd::AsFd::as_fd(&child_stdout))?;
                 Ok(child_stdout.into())
@@ -609,10 +580,7 @@ impl TryFrom<ChildStdout> for OwnedFd {
 ///
 /// When a [`ChildStderr`] is dropped, the underlying handle gets closed.
 #[derive(Debug)]
-pub struct ChildStderr(
-    #[cfg(windows)] Unblock<std::process::ChildStderr>,
-    #[cfg(unix)] Async<std::process::ChildStderr>,
-);
+pub struct ChildStderr(#[cfg(unix)] Async<std::process::ChildStderr>);
 
 impl ChildStderr {
     /// Convert async_process::ChildStderr into std::process::Stdio.
@@ -634,9 +602,7 @@ impl ChildStderr {
     /// ```
     pub async fn into_stdio(self) -> io::Result<std::process::Stdio> {
         cfg_if::cfg_if! {
-            if #[cfg(windows)] {
-                Ok(self.0.into_inner().await.into())
-            } else if #[cfg(unix)] {
+            if #[cfg(unix)] {
                 let child_stderr = self.0.into_inner()?;
                 blocking_fd(rustix::fd::AsFd::as_fd(&child_stderr))?;
                 Ok(child_stderr.into())
@@ -748,11 +714,7 @@ pub fn driver() -> impl Future<Output = Infallible> + Send + 'static {
 /// # futures_lite::future::block_on(async {
 /// use async_process::Command;
 ///
-/// let output = if cfg!(target_os = "windows") {
-///     Command::new("cmd").args(&["/C", "echo hello"]).output().await?
-/// } else {
-///     Command::new("sh").arg("-c").arg("echo hello").output().await?
-/// };
+/// let output = Command::new("sh").arg("-c").arg("echo hello").output().await?;
 /// # std::io::Result::Ok(()) });
 /// ```
 pub struct Command {
@@ -818,8 +780,7 @@ impl Command {
 
     /// Configures an environment variable for the new process.
     ///
-    /// Note that environment variable names are case-insensitive (but case-preserving) on Windows,
-    /// and case-sensitive on all other platforms.
+    /// Note that environment variable names are case-sensitive.
     ///
     /// # Examples
     ///
@@ -840,8 +801,7 @@ impl Command {
 
     /// Configures multiple environment variables for the new process.
     ///
-    /// Note that environment variable names are case-insensitive (but case-preserving) on Windows,
-    /// and case-sensitive on all other platforms.
+    /// Note that environment variable names are case-sensitive.
     ///
     /// # Examples
     ///
@@ -1230,17 +1190,8 @@ mod test {
             cmd
         }
 
-        #[cfg(windows)]
-        fn command() -> Command {
-            let mut cmd = Command::new("cmd");
-            cmd.arg("/C").arg("echo hello");
-            cmd
-        }
-
         #[cfg(unix)]
         const OUTPUT: &[u8] = b"hello\n";
-        #[cfg(windows)]
-        const OUTPUT: &[u8] = b"hello\r\n";
 
         future::block_on(async {
             // Thread should not be spawned off the bat.

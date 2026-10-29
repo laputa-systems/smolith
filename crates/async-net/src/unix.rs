@@ -7,8 +7,6 @@ use std::io::{self, Read as _, Write as _};
 use std::net::Shutdown;
 #[cfg(unix)]
 use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd};
-#[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, RawSocket};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::path::Path;
 use std::pin::Pin;
@@ -184,13 +182,6 @@ impl TryFrom<OwnedFd> for UnixListener {
 
     fn try_from(value: OwnedFd) -> Result<Self, Self::Error> {
         Self::try_from(std::os::unix::net::UnixListener::from(value))
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for UnixListener {
-    fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_socket()
     }
 }
 
@@ -399,13 +390,6 @@ impl TryFrom<OwnedFd> for UnixStream {
 
     fn try_from(value: OwnedFd) -> Result<Self, Self::Error> {
         Self::try_from(std::os::unix::net::UnixStream::from(value))
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for UnixStream {
-    fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_socket()
     }
 }
 
@@ -765,12 +749,5 @@ impl From<UnixDatagram> for Arc<Async<std::os::unix::net::UnixDatagram>> {
 impl AsRawFd for UnixDatagram {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for UnixDatagram {
-    fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_socket()
     }
 }

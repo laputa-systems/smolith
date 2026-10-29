@@ -44,9 +44,6 @@ use std::task::{Context, Poll};
 #[cfg(unix)]
 use std::os::unix::fs::{DirEntryExt as _, OpenOptionsExt as _};
 
-#[cfg(windows)]
-use std::os::windows::fs::OpenOptionsExt as _;
-
 use async_lock::Mutex;
 use blocking::{unblock, Unblock};
 use futures_lite::future::FutureExt;
@@ -118,8 +115,7 @@ pub async fn copy<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q) -> io::Result<
 ///
 /// # Platform-specific behavior
 ///
-/// This function currently corresponds to the `mkdir` function on Unix
-/// and the `CreateDirectory` function on Windows.
+/// This function currently corresponds to the `mkdir` function on Unix.
 /// Note that this [may change in the future][changes].
 ///
 /// [changes]: io#platform-specific-behavior
@@ -159,8 +155,7 @@ pub async fn create_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
 ///
 /// # Platform-specific behavior
 ///
-/// This function currently corresponds to the `mkdir` function on Unix
-/// and the `CreateDirectory` function on Windows.
+/// This function currently corresponds to the `mkdir` function on Unix.
 /// Note that this [may change in the future][changes].
 ///
 /// [changes]: io#platform-specific-behavior
@@ -318,7 +313,7 @@ pub struct ReadDir(State);
 /// The state of an asynchronous `ReadDir`.
 ///
 /// The `ReadDir` can be either idle or busy performing an asynchronous operation.
-#[allow(clippy::large_enum_variant)] // TODO: Windows-specific
+#[allow(clippy::large_enum_variant)]
 enum State {
     Idle(Option<std::fs::ReadDir>),
     Busy(blocking::Task<(std::fs::ReadDir, Option<io::Result<std::fs::DirEntry>>)>),
@@ -1114,23 +1109,9 @@ impl std::os::unix::io::AsRawFd for File {
     }
 }
 
-#[cfg(windows)]
-impl std::os::windows::io::AsRawHandle for File {
-    fn as_raw_handle(&self) -> std::os::windows::io::RawHandle {
-        self.file.as_raw_handle()
-    }
-}
-
 #[cfg(unix)]
 impl From<std::os::unix::io::OwnedFd> for File {
     fn from(fd: std::os::unix::io::OwnedFd) -> Self {
-        File::from(std::fs::File::from(fd))
-    }
-}
-
-#[cfg(windows)]
-impl From<std::os::windows::io::OwnedHandle> for File {
-    fn from(fd: std::os::windows::io::OwnedHandle) -> Self {
         File::from(std::fs::File::from(fd))
     }
 }
@@ -1139,13 +1120,6 @@ impl From<std::os::windows::io::OwnedHandle> for File {
 impl std::os::unix::io::AsFd for File {
     fn as_fd(&self) -> std::os::unix::io::BorrowedFd<'_> {
         self.file.as_fd()
-    }
-}
-
-#[cfg(windows)]
-impl std::os::windows::io::AsHandle for File {
-    fn as_handle(&self) -> std::os::windows::io::BorrowedHandle<'_> {
-        self.file.as_handle()
     }
 }
 
@@ -1503,34 +1477,6 @@ impl unix::OpenOptionsExt for OpenOptions {
     }
 }
 
-#[cfg(windows)]
-impl windows::OpenOptionsExt for OpenOptions {
-    fn access_mode(&mut self, access: u32) -> &mut Self {
-        self.0.access_mode(access);
-        self
-    }
-
-    fn share_mode(&mut self, val: u32) -> &mut Self {
-        self.0.share_mode(val);
-        self
-    }
-
-    fn custom_flags(&mut self, flags: u32) -> &mut Self {
-        self.0.custom_flags(flags);
-        self
-    }
-
-    fn attributes(&mut self, val: u32) -> &mut Self {
-        self.0.attributes(val);
-        self
-    }
-
-    fn security_qos_flags(&mut self, flags: u32) -> &mut Self {
-        self.0.security_qos_flags(flags);
-        self
-    }
-}
-
 mod __private {
     #[doc(hidden)]
     pub trait Sealed {}
@@ -1651,204 +1597,5 @@ pub mod unix {
         /// # std::io::Result::Ok(()) });
         /// ```
         fn custom_flags(&mut self, flags: i32) -> &mut Self;
-    }
-}
-
-/// Windows-specific extensions.
-#[cfg(windows)]
-pub mod windows {
-    use super::__private::Sealed;
-    use super::*;
-
-    #[doc(no_inline)]
-    pub use std::os::windows::fs::MetadataExt;
-
-    /// Creates a new directory symbolic link on the filesystem.
-    ///
-    /// The `dst` path will be a directory symbolic link pointing to the `src` path.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # futures_lite::future::block_on(async {
-    /// async_fs::windows::symlink_dir("a", "b").await?;
-    /// # std::io::Result::Ok(()) });
-    /// ```
-    pub async fn symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q) -> io::Result<()> {
-        let src = src.as_ref().to_owned();
-        let dst = dst.as_ref().to_owned();
-        unblock(move || std::os::windows::fs::symlink_dir(&src, &dst)).await
-    }
-
-    /// Creates a new file symbolic link on the filesystem.
-    ///
-    /// The `dst` path will be a file symbolic link pointing to the `src` path.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # futures_lite::future::block_on(async {
-    /// async_fs::windows::symlink_file("a.txt", "b.txt").await?;
-    /// # std::io::Result::Ok(()) });
-    /// ```
-    pub async fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q) -> io::Result<()> {
-        let src = src.as_ref().to_owned();
-        let dst = dst.as_ref().to_owned();
-        unblock(move || std::os::windows::fs::symlink_file(&src, &dst)).await
-    }
-
-    /// Windows-specific extensions to [`OpenOptions`].
-    pub trait OpenOptionsExt: Sealed {
-        /// Overrides the `dwDesiredAccess` argument to the call to [`CreateFile`]
-        /// with the specified value.
-        ///
-        /// This will override the `read`, `write`, and `append` flags on the
-        /// [`OpenOptions`] structure. This method provides fine-grained control over
-        /// the permissions to read, write and append data, attributes (like hidden
-        /// and system), and extended attributes.
-        ///
-        /// # Examples
-        ///
-        /// ```no_run
-        /// use async_fs::{OpenOptions, windows::OpenOptionsExt};
-        ///
-        /// # futures_lite::future::block_on(async {
-        /// // Open without read and write permission, for example if you only need
-        /// // to call `stat` on the file
-        /// let file = OpenOptions::new().access_mode(0).open("foo.txt").await?;
-        /// # std::io::Result::Ok(()) });
-        /// ```
-        ///
-        /// [`CreateFile`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
-        fn access_mode(&mut self, access: u32) -> &mut Self;
-
-        /// Overrides the `dwShareMode` argument to the call to [`CreateFile`] with
-        /// the specified value.
-        ///
-        /// By default `share_mode` is set to
-        /// `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`. This allows
-        /// other processes to read, write, and delete/rename the same file
-        /// while it is open. Removing any of the flags will prevent other
-        /// processes from performing the corresponding operation until the file
-        /// handle is closed.
-        ///
-        /// # Examples
-        ///
-        /// ```no_run
-        /// use async_fs::{OpenOptions, windows::OpenOptionsExt};
-        ///
-        /// # futures_lite::future::block_on(async {
-        /// // Do not allow others to read or modify this file while we have it open
-        /// // for writing.
-        /// let file = OpenOptions::new()
-        ///     .write(true)
-        ///     .share_mode(0)
-        ///     .open("foo.txt")
-        ///     .await?;
-        /// # std::io::Result::Ok(()) });
-        /// ```
-        ///
-        /// [`CreateFile`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
-        fn share_mode(&mut self, val: u32) -> &mut Self;
-
-        /// Sets extra flags for the `dwFileFlags` argument to the call to
-        /// [`CreateFile2`] to the specified value (or combines it with
-        /// `attributes` and `security_qos_flags` to set the `dwFlagsAndAttributes`
-        /// for [`CreateFile`]).
-        ///
-        /// Custom flags can only set flags, not remove flags set by Rust's options.
-        /// This option overwrites any previously set custom flags.
-        ///
-        /// # Examples
-        ///
-        /// ```no_run
-        /// use async_fs::{OpenOptions, windows::OpenOptionsExt};
-        ///
-        /// # futures_lite::future::block_on(async {
-        /// let file = OpenOptions::new()
-        ///     .create(true)
-        ///     .write(true)
-        ///     .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_DELETE_ON_CLOSE)
-        ///     .open("foo.txt")
-        ///     .await?;
-        /// # std::io::Result::Ok(()) });
-        /// ```
-        ///
-        /// [`CreateFile`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
-        /// [`CreateFile2`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfile2
-        fn custom_flags(&mut self, flags: u32) -> &mut Self;
-
-        /// Sets the `dwFileAttributes` argument to the call to [`CreateFile2`] to
-        /// the specified value (or combines it with `custom_flags` and
-        /// `security_qos_flags` to set the `dwFlagsAndAttributes` for
-        /// [`CreateFile`]).
-        ///
-        /// If a _new_ file is created because it does not yet exist and
-        /// `.create(true)` or `.create_new(true)` are specified, the new file is
-        /// given the attributes declared with `.attributes()`.
-        ///
-        /// If an _existing_ file is opened with `.create(true).truncate(true)`, its
-        /// existing attributes are preserved and combined with the ones declared
-        /// with `.attributes()`.
-        ///
-        /// In all other cases the attributes get ignored.
-        ///
-        /// # Examples
-        ///
-        /// ```no_run
-        /// use async_fs::{OpenOptions, windows::OpenOptionsExt};
-        ///
-        /// # futures_lite::future::block_on(async {
-        /// let file = OpenOptions::new()
-        ///     .write(true)
-        ///     .create(true)
-        ///     .attributes(windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_HIDDEN)
-        ///     .open("foo.txt")
-        ///     .await?;
-        /// # std::io::Result::Ok(()) });
-        /// ```
-        ///
-        /// [`CreateFile`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
-        /// [`CreateFile2`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfile2
-        fn attributes(&mut self, val: u32) -> &mut Self;
-
-        /// Sets the `dwSecurityQosFlags` argument to the call to [`CreateFile2`] to
-        /// the specified value (or combines it with `custom_flags` and `attributes`
-        /// to set the `dwFlagsAndAttributes` for [`CreateFile`]).
-        ///
-        /// By default `security_qos_flags` is not set. It should be specified when
-        /// opening a named pipe, to control to which degree a server process can
-        /// act on behalf of a client process (security impersonation level).
-        ///
-        /// When `security_qos_flags` is not set, a malicious program can gain the
-        /// elevated privileges of a privileged Rust process when it allows opening
-        /// user-specified paths, by tricking it into opening a named pipe. So
-        /// arguably `security_qos_flags` should also be set when opening arbitrary
-        /// paths. However the bits can then conflict with other flags, specifically
-        /// `FILE_FLAG_OPEN_NO_RECALL`.
-        ///
-        /// For information about possible values, see [Impersonation Levels] on the
-        /// Windows Dev Center site. The `SECURITY_SQOS_PRESENT` flag is set
-        /// automatically when using this method.
-        ///
-        /// # Examples
-        ///
-        /// ```no_run
-        /// use async_fs::{OpenOptions, windows::OpenOptionsExt};
-        ///
-        /// # futures_lite::future::block_on(async {
-        /// let file = OpenOptions::new()
-        ///     .write(true)
-        ///     .create(true)
-        ///     .security_qos_flags(windows_sys::Win32::Storage::FileSystem::SECURITY_IDENTIFICATION)
-        ///     .open(r"\\.\pipe\MyPipe")
-        ///     .await?;
-        /// # std::io::Result::Ok(()) });
-        /// ```
-        ///
-        /// [`CreateFile`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
-        /// [`CreateFile2`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfile2
-        /// [Impersonation Levels]: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-security_impersonation_level
-        fn security_qos_flags(&mut self, flags: u32) -> &mut Self;
     }
 }

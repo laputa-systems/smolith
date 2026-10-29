@@ -19,9 +19,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Signal::Cont,
         ])?;
 
-        #[cfg(windows)]
-        let signals = Signals::new([Signal::Int])?;
-
         // Loop over the signals.
         signals
             .for_each(|signal| {

@@ -455,11 +455,9 @@ where
 ///
 /// [`Unblock`] is a low-level primitive, and as such it comes with some caveats.
 ///
-/// For higher-level primitives built on top of [`Unblock`], look into [`async-fs`] or
-/// [`async-process`] (on Windows).
+/// For higher-level primitives built on top of [`Unblock`], look into [`async-fs`].
 ///
 /// [`async-fs`]: https://github.com/smol-rs/async-fs
-/// [`async-process`]: https://github.com/smol-rs/async-process
 ///
 /// [`Unblock`] communicates with I/O operations on the thread pool through a pipe. That means an
 /// async read/write operation simply receives/sends some bytes from/into the pipe. When in reading
