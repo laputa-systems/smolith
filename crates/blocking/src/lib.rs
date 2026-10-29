@@ -503,6 +503,7 @@ pub struct Unblock<T> {
     state: State<T>,
     cap: Option<usize>,
     write_error: Option<io::Error>,
+    needs_flush: bool,
 }
 
 impl<T> Unblock<T> {
@@ -520,6 +521,7 @@ impl<T> Unblock<T> {
             state: State::Idle(Some(Box::new(io))),
             cap: None,
             write_error: None,
+            needs_flush: true,
         }
     }
 
@@ -547,6 +549,7 @@ impl<T> Unblock<T> {
             state: State::Idle(Some(Box::new(io))),
             cap: Some(cap),
             write_error: None,
+            needs_flush: true,
         }
     }
 
@@ -571,6 +574,7 @@ impl<T> Unblock<T> {
     pub async fn get_mut(&mut self) -> &mut T {
         // Wait for the running task to stop and ignore I/O errors if there are any.
         future::poll_fn(|cx| self.poll_stop(cx)).await.ok();
+        self.needs_flush = true;
 
         // Assume idle state and get a reference to the inner value.
         match &mut self.state {
@@ -579,7 +583,8 @@ impl<T> Unblock<T> {
             | State::Streaming(..)
             | State::Reading(..)
             | State::Writing(..)
-            | State::Seeking(..) => {
+            | State::Seeking(..)
+            | State::Flushing(..) => {
                 unreachable!("when stopped, the state machine must be in idle state");
             }
         }
@@ -616,7 +621,8 @@ impl<T> Unblock<T> {
             | State::Streaming(..)
             | State::Reading(..)
             | State::Writing(..)
-            | State::Seeking(..) => {
+            | State::Seeking(..)
+            | State::Flushing(..) => {
                 unreachable!("when stopped, the state machine must be in idle state");
             }
         };
@@ -668,7 +674,8 @@ impl<T> Unblock<T> {
             | State::Streaming(..)
             | State::Reading(..)
             | State::Writing(..)
-            | State::Seeking(..) => {
+            | State::Seeking(..)
+            | State::Flushing(..) => {
                 unreachable!("when stopped, the state machine must be in idle state");
             }
         }
@@ -686,6 +693,7 @@ impl<T> Unblock<T> {
                     // Poll the task to wait for it to finish.
                     let io = ready!(Pin::new(task).poll(cx));
                     self.state = State::Idle(Some(io));
+                    self.needs_flush = true;
                 }
 
                 State::Streaming(any, task) => {
@@ -719,6 +727,18 @@ impl<T> Unblock<T> {
                     let (res, io) = ready!(Pin::new(task).poll(cx));
                     // Make sure to move into the idle state before reporting errors.
                     self.state = State::Idle(Some(io));
+                    if res.is_ok() {
+                        self.needs_flush = false;
+                    }
+                    res?;
+                }
+
+                State::Flushing(task) => {
+                    let (res, io) = ready!(Pin::new(task).poll(cx));
+                    self.state = State::Idle(Some(io));
+                    if res.is_ok() {
+                        self.needs_flush = false;
+                    }
                     res?;
                 }
 
@@ -760,7 +780,8 @@ impl<T: fmt::Debug> fmt::Debug for Unblock<T> {
             | State::Streaming(..)
             | State::Reading(..)
             | State::Writing(..)
-            | State::Seeking(..) => f.debug_struct("Unblock").field("io", &Blocked).finish(),
+            | State::Seeking(..)
+            | State::Flushing(..) => f.debug_struct("Unblock").field("io", &Blocked).finish(),
         }
     }
 }
@@ -790,6 +811,9 @@ enum State<T> {
 
     /// The inner value is a [`Seek`] currently seeking in a task.
     Seeking(Task<(SeekFrom, io::Result<u64>, Box<T>)>),
+
+    /// `T::flush` is running on the pool.
+    Flushing(Task<(io::Result<()>, Box<T>)>),
 }
 
 impl<T: Iterator + Send + 'static> Stream for Unblock<T>
@@ -806,7 +830,8 @@ where
                 | State::Streaming(None, _)
                 | State::Reading(..)
                 | State::Writing(..)
-                | State::Seeking(..) => {
+                | State::Seeking(..)
+                | State::Flushing(..) => {
                     // Wait for the running task to stop.
                     ready!(self.poll_stop(cx)).ok();
                 }
@@ -864,6 +889,10 @@ impl<T: Read + Send + 'static> AsyncRead for Unblock<T> {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
+        if buf.is_empty() {
+            return Poll::Ready(Ok(0));
+        }
+
         loop {
             match &mut self.state {
                 // If not in idle or active reading state, stop the running task.
@@ -871,7 +900,8 @@ impl<T: Read + Send + 'static> AsyncRead for Unblock<T> {
                 | State::Reading(None, _)
                 | State::Streaming(..)
                 | State::Writing(..)
-                | State::Seeking(..) => {
+                | State::Seeking(..)
+                | State::Flushing(..) => {
                     // Wait for the running task to stop.
                     ready!(self.poll_stop(cx))?;
                 }
@@ -932,6 +962,13 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
+        if buf.is_empty() {
+            if let Some(err) = self.write_error.take() {
+                return Poll::Ready(Err(err));
+            }
+            return Poll::Ready(Ok(0));
+        }
+
         loop {
             if let Some(err) = self.write_error.take() {
                 return Poll::Ready(Err(err));
@@ -943,7 +980,8 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
                 | State::Writing(None, _)
                 | State::Streaming(..)
                 | State::Reading(..)
-                | State::Seeking(..) => {
+                | State::Seeking(..)
+                | State::Flushing(..) => {
                     // Wait for the running task to stop.
                     ready!(self.poll_stop(cx))?;
                     None
@@ -1001,7 +1039,10 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
             if let Some((res, io)) = finished {
                 self.state = State::Idle(Some(io));
                 match res {
-                    Ok(()) => return Poll::Ready(Ok(0)),
+                    Ok(()) => {
+                        self.needs_flush = false;
+                        return Poll::Ready(Ok(0));
+                    }
                     Err(err) => self.write_error = Some(err),
                 }
             }
@@ -1013,7 +1054,25 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
             if let Some(err) = self.write_error.take() {
                 return Poll::Ready(Err(err));
             }
+            if matches!(self.state, State::Idle(None))
+                || (matches!(self.state, State::Idle(Some(_))) && !self.needs_flush)
+            {
+                return Poll::Ready(Ok(()));
+            }
+
             match &mut self.state {
+                State::Flushing(task) => {
+                    let (res, io) = ready!(Pin::new(task).poll(cx));
+                    self.state = State::Idle(Some(io));
+                    return match res {
+                        Ok(()) => {
+                            self.needs_flush = false;
+                            Poll::Ready(Ok(()))
+                        }
+                        Err(err) => Poll::Ready(Err(err)),
+                    };
+                }
+
                 // If not in idle state, stop the running task.
                 State::WithMut(..)
                 | State::Streaming(..)
@@ -1024,8 +1083,14 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
                     ready!(self.poll_stop(cx))?;
                 }
 
-                // Idle implies flushed.
-                State::Idle(_) => return Poll::Ready(Ok(())),
+                State::Idle(io) => {
+                    let mut io = io.take().expect("inner value was taken out");
+                    let task = Executor::spawn(async move {
+                        let res = io.flush();
+                        (res, io)
+                    });
+                    self.state = State::Flushing(task);
+                }
             }
         }
     }
@@ -1052,7 +1117,8 @@ impl<T: Seek + Send + 'static> AsyncSeek for Unblock<T> {
                 State::WithMut(..)
                 | State::Streaming(..)
                 | State::Reading(..)
-                | State::Writing(..) => {
+                | State::Writing(..)
+                | State::Flushing(..) => {
                     // Wait for the running task to stop.
                     ready!(self.poll_stop(cx))?;
                 }
