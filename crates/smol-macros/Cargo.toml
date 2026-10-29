@@ -17,7 +17,7 @@ name = "smol_macros"
 [dependencies]
 async-executor = { workspace = true }
 async-io = { workspace = true }
-event-listener = { workspace = true }
+event-listener = { workspace = true, features = ["std"] }
 futures-lite = { workspace = true, default-features = false }
 
 [dev-dependencies]

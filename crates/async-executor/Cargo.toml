@@ -20,8 +20,8 @@ static = []
 
 [dependencies]
 async-task = { workspace = true }
-concurrent-queue = { workspace = true }
-fastrand = { workspace = true }
+concurrent-queue = { workspace = true, features = ["std"] }
+fastrand = { workspace = true, features = ["std"] }
 futures-lite = { workspace = true, default-features = false }
 pin-project-lite = "0.2"
 slab = "0.4.7"

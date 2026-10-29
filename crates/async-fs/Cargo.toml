@@ -19,7 +19,7 @@ name = "async_fs"
 [dependencies]
 async-lock = { workspace = true }
 blocking = { workspace = true }
-futures-lite = { workspace = true }
+futures-lite = { workspace = true, features = ["race", "std"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 libc = "0.2.78"

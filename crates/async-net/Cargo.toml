@@ -19,4 +19,4 @@ name = "async_net"
 [dependencies]
 async-io = { workspace = true }
 blocking = { workspace = true }
-futures-lite = { workspace = true }
+futures-lite = { workspace = true, features = ["race", "std"] }

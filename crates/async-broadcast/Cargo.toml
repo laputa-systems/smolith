@@ -26,8 +26,8 @@ name = "broadcast_bench"
 [features]
 
 [dependencies]
-event-listener = { workspace = true }
-event-listener-strategy = { workspace = true }
+event-listener = { workspace = true, features = ["std"] }
+event-listener-strategy = { workspace = true, features = ["std"] }
 futures-core = "0.3.21"
 pin-project-lite = "0.2.13"
 

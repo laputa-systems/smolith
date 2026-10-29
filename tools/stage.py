@@ -333,11 +333,33 @@ def package_name(dep_name, spec):
     return dep_name
 
 
+def manifest_paths():
+    meta = metadata()
+    return {
+        pkg["name"]: Path(pkg["manifest_path"])
+        for pkg in meta["packages"]
+        if pkg["name"].startswith("laputa-")
+    }
+
+
+def disabled_default_features(manifest):
+    found = set()
+    for kind, dep_name, spec in iter_dep_tables(manifest):
+        if kind == "dev-dependencies":
+            continue
+        if isinstance(spec, dict) and spec.get("default-features") is False:
+            found.add((kind, dep_name))
+    return found
+
+
 def check_artifacts(state, order):
+    sources = manifest_paths()
     for name in order:
         crate = state.crate(name, "0.1.0")
         if crate is None:
             raise SystemExit(f"missing uploaded crate {name} 0.1.0")
+        source = tomllib.loads(sources[name].read_text())
+        required = disabled_default_features(source)
         with tarfile.open(fileobj=io.BytesIO(crate), mode="r:gz") as tar:
             names = tar.getnames()
             manifest_name = next(item for item in names if item.endswith("/Cargo.toml") and item.count("/") == 1)
@@ -349,6 +371,7 @@ def check_artifacts(state, order):
                 raise SystemExit(f"{name} package is missing LICENSE-APACHE")
             if "patch" in manifest:
                 raise SystemExit(f"{name} packaged manifest contains [patch]")
+            packaged = {}
             for kind, dep_name, spec in iter_dep_tables(manifest):
                 if kind == "dev-dependencies":
                     continue
@@ -357,6 +380,11 @@ def check_artifacts(state, order):
                     raise SystemExit(f"{name} packaged {kind} names upstream package {pkg}")
                 if pkg == "tokio" or pkg.startswith("tokio"):
                     raise SystemExit(f"{name} packaged {kind} names {pkg}")
+                packaged.setdefault((kind, dep_name), spec)
+            for key in required:
+                spec = packaged.get(key)
+                if not isinstance(spec, dict) or spec.get("default-features") is not False:
+                    raise SystemExit(f"{name} packaged {key[0]} {key[1]} dropped default-features = false")
         print(f"artifact {name} licenses and dependency names ok", flush=True)
 
 

@@ -20,7 +20,7 @@ bench = false
 [dependencies]
 async-io = { workspace = true }
 blocking = { workspace = true }
-futures-lite = { workspace = true }
+futures-lite = { workspace = true, features = ["race", "std"] }
 libc = "0.2"
 
 [dev-dependencies]
@@ -29,7 +29,7 @@ async-executor = { workspace = true }
 async-fs = { workspace = true }
 async-lock = { workspace = true }
 async-net = { workspace = true }
-concurrent-queue = { workspace = true }
-event-listener = { workspace = true }
+concurrent-queue = { workspace = true, features = ["std"] }
+event-listener = { workspace = true, features = ["std"] }
 polling = { workspace = true }
 smol = { package = "laputa-smol", version = "0.1.0", path = "../../crates/smol" }

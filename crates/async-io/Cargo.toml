@@ -27,7 +27,7 @@ harness = false
 
 [dependencies]
 cfg-if = "1"
-concurrent-queue = { workspace = true }
+concurrent-queue = { workspace = true, features = ["std"] }
 futures-io = { version = "0.3.28", default-features = false, features = ["std"] }
 futures-lite = { workspace = true, default-features = false }
 parking = { workspace = true }

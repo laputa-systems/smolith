@@ -23,7 +23,7 @@ async-io = { workspace = true }
 async-lock = { workspace = true }
 async-net = { workspace = true }
 blocking = { workspace = true }
-futures-lite = { workspace = true }
+futures-lite = { workspace = true, features = ["race", "std"] }
 
 [target.'cfg(not(target_os = "espidf"))'.dependencies]
 async-process = { workspace = true }
