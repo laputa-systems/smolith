@@ -1,14 +1,5 @@
 # async-lock
 
-[![Build](https://github.com/smol-rs/async-lock/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/async-lock/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-lock)
-[![Cargo](https://img.shields.io/crates/v/async-lock.svg)](
-https://crates.io/crates/async-lock)
-[![Documentation](https://docs.rs/async-lock/badge.svg)](
-https://docs.rs/async-lock)
-
 Async synchronization primitives.
 
 This crate provides the following primitives:

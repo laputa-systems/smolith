@@ -1,14 +1,5 @@
 # futures-lite
 
-[![Build](https://github.com/smol-rs/futures-lite/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/futures-lite/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/futures-lite)
-[![Cargo](https://img.shields.io/crates/v/futures-lite.svg)](
-https://crates.io/crates/futures-lite)
-[![Documentation](https://docs.rs/futures-lite/badge.svg)](
-https://docs.rs/futures-lite)
-
 A lightweight async prelude.
 
 This crate is a subset of [futures] that compiles an order of magnitude faster, fixes minor

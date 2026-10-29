@@ -1,14 +1,5 @@
 # event-listener-strategy
 
-[![Build](https://github.com/smol-rs/event-listener-strategy/workflows/CI/badge.svg)](
-https://github.com/smol-rs/event-listener-strategy/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/event-listener-strategy)
-[![Cargo](https://img.shields.io/crates/v/event-listener-strategy.svg)](
-https://crates.io/crates/event-listener-strategy)
-[![Documentation](https://docs.rs/event-listener-strategy/badge.svg)](
-https://docs.rs/event-listener-strategy)
-
 A strategy for using the [`event-listener`] crate in both blocking and non-blocking contexts.
 
 One of the stand-out features of the [`event-listener`] crate is the ability to use it in both

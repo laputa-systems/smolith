@@ -1,14 +1,5 @@
 # async-net
 
-[![Build](https://github.com/smol-rs/async-net/workflows/Build%20and%20test/badge.svg)](
-https://github.com/smol-rs/async-net/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-net)
-[![Cargo](https://img.shields.io/crates/v/async-net.svg)](
-https://crates.io/crates/async-net)
-[![Documentation](https://docs.rs/async-net/badge.svg)](
-https://docs.rs/async-net)
-
 Async networking primitives for TCP/UDP/Unix communication.
 
 This crate is an async version of [`std::net`] and [`std::os::unix::net`].

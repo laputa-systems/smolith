@@ -1,14 +1,5 @@
 # async-process
 
-[![Build](https://github.com/smol-rs/async-process/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/async-process/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-process)
-[![Cargo](https://img.shields.io/crates/v/async-process.svg)](
-https://crates.io/crates/async-process)
-[![Documentation](https://docs.rs/async-process/badge.svg)](
-https://docs.rs/async-process)
-
 Async interface for working with processes.
 
 This crate is an async version of `std::process`.

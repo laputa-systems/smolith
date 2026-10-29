@@ -1,14 +1,5 @@
 # atomic-waker
 
-[![Build](https://github.com/smol-rs/atomic-waker/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/atomic-waker/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/atomic-waker)
-[![Cargo](https://img.shields.io/crates/v/atomic-waker.svg)](
-https://crates.io/crates/atomic-waker)
-[![Documentation](https://docs.rs/atomic-waker/badge.svg)](
-https://docs.rs/atomic-waker)
-
 `futures::task::AtomicWaker` extracted into its own crate.
 
 ## License

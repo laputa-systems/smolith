@@ -1,14 +1,5 @@
 # smol-macros
 
-[![Build](https://github.com/smol-rs/smol-macros/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/smol-macros/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/smol-macros)
-[![Cargo](https://img.shields.io/crates/v/smol-macros.svg)](
-https://crates.io/crates/smol-macros)
-[![Documentation](https://docs.rs/smol-macros/badge.svg)](
-https://docs.rs/smol-macros)
-
 Macros for using `smol-rs`.
 
 One of the advantages of [`smol`] is that it lets you set up your own executor, optimized for

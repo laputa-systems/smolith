@@ -1,14 +1,5 @@
 # async-task
 
-[![Build](https://github.com/smol-rs/async-task/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/async-task/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-task)
-[![Cargo](https://img.shields.io/crates/v/async-task.svg)](
-https://crates.io/crates/async-task)
-[![Documentation](https://docs.rs/async-task/badge.svg)](
-https://docs.rs/async-task)
-
 Task abstraction for building executors.
 
 To spawn a future onto an executor, we first need to allocate it on the heap and keep some

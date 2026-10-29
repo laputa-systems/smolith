@@ -1,14 +1,5 @@
 # async-io
 
-[![Build](https://github.com/smol-rs/async-io/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/async-io/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-io)
-[![Cargo](https://img.shields.io/crates/v/async-io.svg)](
-https://crates.io/crates/async-io)
-[![Documentation](https://docs.rs/async-io/badge.svg)](
-https://docs.rs/async-io)
-
 Async I/O and timers.
 
 This crate provides two tools:

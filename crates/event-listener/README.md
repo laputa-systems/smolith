@@ -1,14 +1,5 @@
 # event-listener
 
-[![Build](https://github.com/smol-rs/event-listener/workflows/CI/badge.svg)](
-https://github.com/smol-rs/event-listener/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/event-listener)
-[![Cargo](https://img.shields.io/crates/v/event-listener.svg)](
-https://crates.io/crates/event-listener)
-[![Documentation](https://docs.rs/event-listener/badge.svg)](
-https://docs.rs/event-listener)
-
 Notify async tasks or threads.
 
 This is a synchronization primitive similar to [eventcounts] invented by Dmitry Vyukov.

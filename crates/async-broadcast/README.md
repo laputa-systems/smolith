@@ -1,14 +1,5 @@
 # async-broadcast
 
-[![Build](https://github.com/smol-rs/async-broadcast/workflows/Build%20and%20test/badge.svg)](
-https://github.com/smol-rs/async-broadcast/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-broadcast)
-[![Cargo](https://img.shields.io/crates/v/async-broadcast.svg)](
-https://crates.io/crates/async-broadcast)
-[![Documentation](https://docs.rs/async-broadcast/badge.svg)](
-https://docs.rs/async-broadcast)
-
 An async multi-producer multi-consumer broadcast channel, where each consumer gets a clone of every
 message sent on the channel. For obvious reasons, the channel can only be used to broadcast types
 that implement `Clone`.

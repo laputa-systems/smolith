@@ -1,14 +1,5 @@
 # polling
 
-[![Build](https://github.com/smol-rs/polling/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/polling/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/polling)
-[![Cargo](https://img.shields.io/crates/v/polling.svg)](
-https://crates.io/crates/polling)
-[![Documentation](https://docs.rs/polling/badge.svg)](
-https://docs.rs/polling)
-
 Portable interface to epoll, kqueue, event ports, and poll.
 
 Supported platforms:

@@ -1,14 +1,5 @@
 # waker-fn
 
-[![Build](https://github.com/smol-rs/waker-fn/workflows/Build%20and%20test/badge.svg)](
-https://github.com/smol-rs/waker-fn/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/waker-fn)
-[![Cargo](https://img.shields.io/crates/v/waker-fn.svg)](
-https://crates.io/crates/waker-fn)
-[![Documentation](https://docs.rs/waker-fn/badge.svg)](
-https://docs.rs/waker-fn)
-
 Convert closures into wakers.
 
 A [`Waker`] is just a fancy callback. This crate converts regular closures into wakers.

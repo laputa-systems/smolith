@@ -1,16 +1,7 @@
 # async-signal
 
-[![Build](https://github.com/smol-rs/async-signal/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/async-signal/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-signal)
-[![Cargo](https://img.shields.io/crates/v/async-signal.svg)](
-https://crates.io/crates/async-signal)
-[![Documentation](https://docs.rs/async-signal/badge.svg)](
-https://docs.rs/async-signal)
-
 Asynchronous signal handling.
- 
+
 This crate provides the [`Signals`] type, which can be used to listen for POSIX signals asynchronously. It can be seen as an asynchronous version of [`signal_hook::iterator::Signals`].
 
 [`Signals`]: https://docs.rs/async-signal/latest/async_signal/struct.Signals.html

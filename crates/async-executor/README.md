@@ -1,14 +1,5 @@
 # async-executor
 
-[![Build](https://github.com/smol-rs/async-executor/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/async-executor/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-executor)
-[![Cargo](https://img.shields.io/crates/v/async-executor.svg)](
-https://crates.io/crates/async-executor)
-[![Documentation](https://docs.rs/async-executor/badge.svg)](
-https://docs.rs/async-executor)
-
 Async executors.
 
 This crate provides two reference executors that trade performance for

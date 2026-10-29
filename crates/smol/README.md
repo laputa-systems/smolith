@@ -1,18 +1,5 @@
 # smol
 
-[![Build](https://github.com/smol-rs/smol/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/smol/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/smol)
-[![Cargo](https://img.shields.io/crates/v/smol.svg)](
-https://crates.io/crates/smol)
-[![Documentation](https://docs.rs/smol/badge.svg)](
-https://docs.rs/smol)
-[![Chat](https://img.shields.io/matrix/smol-rs%3Amatrix.org)](
-https://matrix.to/#/#smol-rs:matrix.org)
-
-<img src="https://raw.githubusercontent.com/smol-rs/smol/master/assets/images/logo_fullsize_transparent.png" alt="kitty" width="100px" style="float: left;" />
-
 A small and fast async runtime.
 
 This crate simply re-exports other smaller async crates (see the source).
@@ -43,43 +30,23 @@ fn main() -> io::Result<()> {
 }
 ```
 
-There's a lot more in the [examples] directory.
+There's a lot more in the [examples](https://github.com/laputa-systems/smolith/tree/main/crates/smol/examples) directory.
 
-[`async-compat`]: https://docs.rs/async-compat/latest/async_compat/
-[`smol-macros`]: https://docs.rs/smol-macros/latest/smol_macros/
-[examples]: https://github.com/smol-rs/smol/tree/master/examples
+To call Tokio libraries from this runtime, adapt the futures with [async-compat](https://docs.rs/async-compat/latest/async_compat/). That crate is not part of this workspace. [`smol-macros`](https://github.com/laputa-systems/smolith/tree/main/crates/smol-macros) provides the macros.
 
 ## Subcrates
 
-- [async-channel] - Multi-producer multi-consumer channels
-- [async-executor] - Composable async executors
-- [async-fs] - Async filesystem primitives
-- [async-io] - Async adapter for I/O types, also timers
-- [async-lock] - Async locks (barrier, mutex, reader-writer lock, semaphore)
-- [async-net] - Async networking primitives (TCP/UDP/Unix)
-- [async-process] - Async interface for working with processes
-- [async-task] - Task abstraction for building executors
-- [blocking] - A thread pool for blocking I/O
-- [futures-lite] - A lighter fork of [futures]
-- [polling] - Portable interface to epoll, kqueue, event ports, and wepoll
-
-[async-io]: https://github.com/smol-rs/async-io
-[polling]: https://github.com/smol-rs/polling
-[nb-connect]: https://github.com/smol-rs/nb-connect
-[async-executor]: https://github.com/smol-rs/async-executor
-[async-task]: https://github.com/smol-rs/async-task
-[blocking]: https://github.com/smol-rs/blocking
-[futures-lite]: https://github.com/smol-rs/futures-lite
-[smol]: https://github.com/smol-rs/smol
-[async-net]: https://github.com/smol-rs/async-net
-[async-process]: https://github.com/smol-rs/async-process
-[async-fs]: https://github.com/smol-rs/async-fs
-[async-channel]: https://github.com/smol-rs/async-channel
-[concurrent-queue]: https://github.com/smol-rs/concurrent-queue
-[event-listener]: https://github.com/smol-rs/event-listener
-[async-lock]: https://github.com/smol-rs/async-lock
-[fastrand]: https://github.com/smol-rs/fastrand
-[futures]: https://github.com/rust-lang/futures-rs
+- `async-channel`: multi-producer multi-consumer channels
+- `async-executor`: composable async executors
+- `async-fs`: async filesystem primitives
+- `async-io`: async adapter for I/O types, and timers
+- `async-lock`: async locks (barrier, mutex, reader-writer lock, semaphore)
+- `async-net`: async TCP, UDP, and Unix sockets
+- `async-process`: async processes
+- `async-task`: task abstraction for executors
+- `blocking`: a thread pool for blocking I/O
+- `futures-lite`: futures, streams, and async I/O combinators
+- `polling`: epoll, kqueue, and event ports
 
 ## TLS certificate
 

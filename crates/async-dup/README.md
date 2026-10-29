@@ -1,14 +1,5 @@
 # async-dup
 
-[![Build](https://github.com/smol-rs/async-dup/workflows/Build%20and%20test/badge.svg)](
-https://github.com/smol-rs/async-dup/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/async-dup)
-[![Cargo](https://img.shields.io/crates/v/async-dup.svg)](
-https://crates.io/crates/async-dup)
-[![Documentation](https://docs.rs/async-dup/badge.svg)](
-https://docs.rs/async-dup)
-
 Duplicate an async I/O handle.
 
 This crate provides two tools, `Arc` and `Mutex`:

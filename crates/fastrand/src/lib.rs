@@ -384,8 +384,8 @@ impl Rng {
         // has a 64-bit state, it necessarily already have biases of at least 2^(-64)
         // probability.
         //
-        // See e.g. Section 3.1 of Thomas, David B., et al. "Gaussian random number generators,
-        // https://www.doc.ic.ac.uk/~wl/papers/07/csur07dt.pdf, for background.
+        // Thomas, David B., et al., "Gaussian random number generators",
+        // https://www.doc.ic.ac.uk/~wl/papers/07/csur07dt.pdf, gives the background.
         const MUL: f32 = 1.0 / (1u64 << 63) as f32;
         (self.gen_u64() >> 1) as f32 * MUL
     }

@@ -1,14 +1,5 @@
 # blocking
 
-[![Build](https://github.com/smol-rs/blocking/actions/workflows/ci.yml/badge.svg)](
-https://github.com/smol-rs/blocking/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
-https://github.com/smol-rs/blocking)
-[![Cargo](https://img.shields.io/crates/v/blocking.svg)](
-https://crates.io/crates/blocking)
-[![Documentation](https://docs.rs/blocking/badge.svg)](
-https://docs.rs/blocking)
-
 A thread pool for isolating blocking I/O in async programs.
 
 Sometimes there's no way to avoid blocking I/O. Consider files or stdin, which have weak async
