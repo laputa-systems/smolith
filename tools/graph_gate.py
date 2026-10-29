@@ -5,15 +5,8 @@ import subprocess
 import sys
 import tomllib
 
-UPSTREAM_NAMES = [
-    "smol", "smol-macros", "async-executor", "async-task", "async-io",
-    "polling", "blocking", "async-net", "async-fs", "async-process",
-    "async-signal", "async-channel", "async-broadcast", "async-lock",
-    "event-listener", "event-listener-strategy", "concurrent-queue",
-    "parking", "atomic-waker", "piper", "futures-lite", "fastrand",
-    "fastrand-contrib", "easy-parallel", "waker-fn", "async-dup"
-]
-EXPECTED_LAPUTA = {f"laputa-{n}" for n in UPSTREAM_NAMES}
+from identity import load_release, self_check
+
 ALLOWED_EXTRA_MEMBERS = {"smolith-qualify"}
 DEPENDENCY_TABLES = ("dependencies", "build-dependencies", "dev-dependencies")
 
@@ -82,15 +75,14 @@ def check_no_patches(root_dir):
         if "patch" in load_toml(path):
             raise ValueError(f"{path} contains a [patch] table")
 
-def check_member_manifests(root_dir):
+def check_member_manifests(root_dir, upstream_names, laputa_names):
     workspace_deps = load_toml(os.path.join(root_dir, "Cargo.toml")).get("workspace", {}).get("dependencies", {})
     crates_dir = os.path.join(root_dir, "crates")
-    upstream_names = set(UPSTREAM_NAMES)
-    for name in UPSTREAM_NAMES:
+    for name in sorted(upstream_names):
         path = os.path.join(crates_dir, name, "Cargo.toml")
         if not os.path.isfile(path):
             raise ValueError(f"Missing member crate manifest: {path}")
-        problems = versionless_owned_paths(load_toml(path), workspace_deps, upstream_names, EXPECTED_LAPUTA)
+        problems = versionless_owned_paths(load_toml(path), workspace_deps, upstream_names, laputa_names)
         if problems:
             raise ValueError(f"{path} has versionless path edges: {', '.join(problems)}")
 
@@ -155,7 +147,7 @@ def self_check_manifests():
     if not versionless_owned_paths(inherited, bare, upstream, laputa):
         raise ValueError("workspace inheritance hid a versionless path")
 
-def check_metadata(metadata_json, label=""):
+def check_metadata(metadata_json, version, upstream_names, laputa_names, label=""):
     meta = json.loads(metadata_json)
     packages_by_id = {p["id"]: p for p in meta["packages"]}
     workspace_members = set(meta["workspace_members"])
@@ -164,8 +156,8 @@ def check_metadata(metadata_json, label=""):
     for pid in workspace_members:
         p = packages_by_id[pid]
         member_names.add(p["name"])
-        if p["version"] != "0.1.0":
-            raise ValueError(f"[{label}] Member {p['name']} has version {p['version']} != 0.1.0")
+        if p["version"] != version:
+            raise ValueError(f"[{label}] Member {p['name']} has version {p['version']} != {version}")
         if p["source"] is not None:
             raise ValueError(f"[{label}] Member {p['name']} source is {p['source']}, expected path (None)")
         if p["name"] in ALLOWED_EXTRA_MEMBERS:
@@ -173,23 +165,22 @@ def check_metadata(metadata_json, label=""):
             with open(manifest, "r") as handle:
                 if "publish = false" not in handle.read():
                     raise ValueError(f"[{label}] Extra member {p['name']} must set publish = false")
-        elif p["name"] not in EXPECTED_LAPUTA:
+        elif p["name"] not in laputa_names:
             raise ValueError(f"[{label}] Member {p['name']} not in expected laputa-* set")
 
-    missing = EXPECTED_LAPUTA - member_names
+    missing = laputa_names - member_names
     if missing:
         raise ValueError(f"[{label}] Missing owned members: {sorted(missing)}")
-    unexpected = member_names - EXPECTED_LAPUTA - ALLOWED_EXTRA_MEMBERS
+    unexpected = member_names - laputa_names - ALLOWED_EXTRA_MEMBERS
     if unexpected:
         raise ValueError(f"[{label}] Unexpected members: {sorted(unexpected)}")
 
-    # Check exactly one version per owned component
-    for laputa_name in EXPECTED_LAPUTA:
+    for laputa_name in laputa_names:
         matching = [p for p in meta["packages"] if p["name"] == laputa_name]
         if len(matching) != 1:
             raise ValueError(f"[{label}] Expected 1 version of {laputa_name}, got {len(matching)}")
-        if matching[0]["version"] != "0.1.0":
-            raise ValueError(f"[{label}] {laputa_name} version is {matching[0]['version']} != 0.1.0")
+        if matching[0]["version"] != version:
+            raise ValueError(f"[{label}] {laputa_name} version is {matching[0]['version']} != {version}")
 
     # Traverse normal and build dependency graph
     resolve_nodes = {n["id"]: n for n in meta["resolve"]["nodes"]}
@@ -223,7 +214,7 @@ def check_metadata(metadata_json, label=""):
         pname = p["name"]
 
         # 1. No upstream un-prefixed smol names
-        if pname in UPSTREAM_NAMES:
+        if pname in upstream_names:
             raise ValueError(f"[{label}] Upstream package {pname} found in normal/build path: {pid}")
 
         # 2. No tokio or tokio-util
@@ -231,19 +222,22 @@ def check_metadata(metadata_json, label=""):
             raise ValueError(f"[{label}] Tokio package {pname} found in normal/build path: {pid}")
 
         # 3. Owned components must resolve to path source (None)
-        if pname in EXPECTED_LAPUTA:
+        if pname in laputa_names:
             if p["source"] is not None:
                 raise ValueError(f"[{label}] Owned component {pname} resolved from non-path source: {p['source']}")
 
 def run_gate():
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     print(f"Running graph gate on {root_dir}")
+    self_check()
+    version, components = load_release(root_dir)
+    upstream_names = {spec["upstream_name"] for spec in components.values()}
+    laputa_names = {spec["package"] for spec in components.values()}
 
-    # 1. Check manifests for patches and versionless edges
     print("Checking manifests for forbidden patches and versionless edges...")
     self_check_manifests()
     check_no_patches(root_dir)
-    check_member_manifests(root_dir)
+    check_member_manifests(root_dir, upstream_names, laputa_names)
     print("Manifest checks passed.")
 
     # 2. Targets to test
@@ -282,9 +276,9 @@ def run_gate():
 
             print(f"Evaluating {label}...")
             output = subprocess.check_output(cmd, cwd=root_dir, text=True)
-            check_metadata(output, label)
+            check_metadata(output, version, upstream_names, laputa_names, label)
 
-    print("GRAPH GATE PASSED: all 26 owned components resolved to laputa-* path sources, no upstream packages or tokio in normal/build paths, one version per owned component, no unpublished paths or workspace patches.")
+    print(f"GRAPH GATE PASSED: all {len(laputa_names)} owned components resolved to laputa-* path sources, no upstream packages or tokio in normal/build paths, one version per owned component, no unpublished paths or workspace patches.")
 
 if __name__ == "__main__":
     try:

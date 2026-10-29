@@ -25,35 +25,11 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from identity import load_release
+
 ROOT = Path(__file__).resolve().parent.parent
-UPSTREAM_NAMES = {
-    "smol",
-    "smol-macros",
-    "async-executor",
-    "async-task",
-    "async-io",
-    "polling",
-    "blocking",
-    "async-net",
-    "async-fs",
-    "async-process",
-    "async-signal",
-    "async-channel",
-    "async-broadcast",
-    "async-lock",
-    "event-listener",
-    "event-listener-strategy",
-    "concurrent-queue",
-    "parking",
-    "atomic-waker",
-    "piper",
-    "futures-lite",
-    "fastrand",
-    "fastrand-contrib",
-    "easy-parallel",
-    "waker-fn",
-    "async-dup",
-}
+VERSION, COMPONENTS = load_release(ROOT)
+UPSTREAM_NAMES = {spec["upstream_name"] for spec in COMPONENTS.values()}
 
 
 class RegistryState:
@@ -355,9 +331,9 @@ def disabled_default_features(manifest):
 def check_artifacts(state, order):
     sources = manifest_paths()
     for name in order:
-        crate = state.crate(name, "0.1.0")
+        crate = state.crate(name, VERSION)
         if crate is None:
-            raise SystemExit(f"missing uploaded crate {name} 0.1.0")
+            raise SystemExit(f"missing uploaded crate {name} {VERSION}")
         source = tomllib.loads(sources[name].read_text())
         required = disabled_default_features(source)
         with tarfile.open(fileobj=io.BytesIO(crate), mode="r:gz") as tar:
@@ -393,10 +369,11 @@ def fresh_consumer(index):
     if consumer.exists():
         shutil.rmtree(consumer)
     (consumer / "src").mkdir(parents=True)
+    package = COMPONENTS["smol"]["package"]
     (consumer / "Cargo.toml").write_text(
-        """[package]
+        f"""[package]
 name = "fresh-consumer"
-version = "0.1.0"
+version = "{VERSION}"
 edition = "2021"
 rust-version = "1.85"
 publish = false
@@ -405,7 +382,7 @@ publish = false
 resolver = "2"
 
 [dependencies]
-smol = { package = "laputa-smol", version = "0.1.0", registry = "staging" }
+smol = {{ package = "{package}", version = "{VERSION}", registry = "staging" }}
 """,
         encoding="utf-8",
     )

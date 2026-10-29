@@ -15,6 +15,8 @@ import tomllib
 from datetime import date
 from pathlib import Path
 
+from identity import load_release
+
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / ".work" / "advisory-db"
 ADVISORY_REPO = "https://github.com/RustSec/advisory-db.git"
@@ -284,11 +286,11 @@ def self_check(advisories):
 
 
 def components():
-    doc = tomllib.loads((ROOT / "UPSTREAM.toml").read_text(encoding="utf-8"))
-    rows = []
-    for name, spec in doc["components"].items():
-        rows.append((name, spec["package"], spec["upstream_name"], spec["upstream_version"]))
-    return rows
+    _version, specs = load_release(ROOT)
+    return [
+        (name, spec["package"], spec["upstream_name"], spec["upstream_version"])
+        for name, spec in specs.items()
+    ]
 
 
 def lock_packages():
@@ -450,8 +452,6 @@ def main():
     failures = []
     notes = []
     owned = components()
-    if len(owned) != 26:
-        raise SystemExit(f"UPSTREAM.toml has {len(owned)} components, expected 26")
     checked_pairs = set()
     for _key, package, upstream_name, upstream_version in owned:
         checked_pairs.add((upstream_name, upstream_version))

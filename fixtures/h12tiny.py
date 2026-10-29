@@ -10,6 +10,9 @@ import sys
 import tomllib
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+from identity import load_release
+
 PIN = os.path.join(ROOT, "fixtures", "h12tiny.toml")
 CHECKOUT = os.path.join(ROOT, ".work", "h12tiny")
 BASELINE_PATH = os.path.join(ROOT, ".work", "h12tiny-baseline.json")
@@ -17,23 +20,20 @@ GATES_PATH = os.path.join(ROOT, ".work", "h12tiny-gates.txt")
 FEATURES = "client,client-sync,server,http1,http2,tls"
 GATE_TIMEOUT_SECONDS = 1200
 
-EDGES = {
-    "async-io": ("laputa-async-io", "crates/async-io"),
-    "async-net": ("laputa-async-net", "crates/async-net"),
-    "futures-lite": ("laputa-futures-lite", "crates/futures-lite"),
-    "smol": ("laputa-smol", "crates/smol"),
-    "atomic-waker": ("laputa-atomic-waker", "crates/atomic-waker"),
-    "fastrand": ("laputa-fastrand", "crates/fastrand"),
-}
-
-REQUIRED = (
-    "laputa-async-io",
-    "laputa-async-net",
-    "laputa-atomic-waker",
-    "laputa-fastrand",
-    "laputa-futures-lite",
-    "laputa-polling",
-    "laputa-smol",
+VERSION, COMPONENTS = load_release(ROOT)
+EDGE_KEYS = ("async-io", "async-net", "futures-lite", "smol", "atomic-waker", "fastrand")
+EDGES = {name: (COMPONENTS[name]["package"], f"crates/{name}") for name in EDGE_KEYS}
+REQUIRED = tuple(
+    COMPONENTS[name]["package"]
+    for name in (
+        "async-io",
+        "async-net",
+        "atomic-waker",
+        "fastrand",
+        "futures-lite",
+        "polling",
+        "smol",
+    )
 )
 
 EDGE_RE = re.compile(
@@ -379,7 +379,7 @@ def rewrite_inline(body, package, path):
         if key in {"package", "version", "path"}:
             continue
         kept.append(part)
-    prefix = f'package = "{package}", version = "0.1.0", path = "{path}"'
+    prefix = f'package = "{package}", version = "{VERSION}", path = "{path}"'
     if kept:
         return "{ " + prefix + ", " + ", ".join(kept) + " }"
     return "{ " + prefix + " }"
@@ -409,7 +409,7 @@ def rewrite_manifest(path):
         package, crate_rel = EDGES[key]
         dep_path = relative_crate(path, crate_rel)
         if body.startswith(("\"", "'")):
-            replacement = f'{{ package = "{package}", version = "0.1.0", path = "{dep_path}" }}'
+            replacement = f'{{ package = "{package}", version = "{VERSION}", path = "{dep_path}" }}'
         elif body.startswith("{") and body.endswith("}"):
             replacement = rewrite_inline(body, package, dep_path)
         else:
