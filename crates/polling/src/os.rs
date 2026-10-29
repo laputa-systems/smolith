@@ -12,9 +12,6 @@
 ))]
 pub mod kqueue;
 
-#[cfg(target_os = "windows")]
-pub mod iocp;
-
 mod __private {
     #[doc(hidden)]
     #[allow(dead_code)]

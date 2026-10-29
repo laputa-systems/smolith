@@ -43,8 +43,6 @@ fn basic_io() {
 fn insert_twice() {
     #[cfg(unix)]
     use std::os::unix::io::AsRawFd;
-    #[cfg(windows)]
-    use std::os::windows::io::AsRawSocket;
 
     let (read, mut write) = tcp_pair().unwrap();
     let read = Arc::new(read);
@@ -53,8 +51,6 @@ fn insert_twice() {
     unsafe {
         #[cfg(unix)]
         let read = read.as_raw_fd();
-        #[cfg(windows)]
-        let read = read.as_raw_socket();
 
         poller.add(read, Event::readable(1)).unwrap();
         assert_eq!(
@@ -105,8 +101,6 @@ fn delete_unrecognized() {
 fn append_events() {
     #[cfg(unix)]
     use std::os::unix::io::AsRawFd;
-    #[cfg(windows)]
-    use std::os::windows::io::AsRawSocket;
 
     // Create a few sockets.
     let mut pairs = Vec::new();
@@ -121,8 +115,6 @@ fn append_events() {
         for (read, _write) in &pairs {
             #[cfg(unix)]
             let read = read.as_raw_fd();
-            #[cfg(windows)]
-            let read = read.as_raw_socket();
 
             poller.add(read, Event::readable(1)).unwrap();
         }

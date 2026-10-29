@@ -9,17 +9,6 @@ fn sigint() {
     }
 }
 
-/// Send SIGINT to the current process.
-#[cfg(windows)]
-fn sigint() {
-    unsafe {
-        windows_sys::Win32::System::Console::GenerateConsoleCtrlEvent(
-            windows_sys::Win32::System::Console::CTRL_C_EVENT,
-            0,
-        );
-    }
-}
-
 #[test]
 fn test_sigint() {
     future::block_on(async {

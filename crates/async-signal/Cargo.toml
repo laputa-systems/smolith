@@ -15,7 +15,6 @@ exclude = ["/.*"]
 name = "async_signal"
 
 [dependencies]
-cfg-if = "1.0.0"
 futures-core = "0.3.26"
 
 [target.'cfg(unix)'.dependencies]
@@ -23,19 +22,6 @@ async-io = { workspace = true }
 futures-io = "0.3.26"
 rustix = { version = "1.0.7", default-features = false, features = ["process", "std"] }
 signal-hook-registry = "1.4.0"
-
-[target.'cfg(windows)'.dependencies]
-async-lock = { workspace = true }
-atomic-waker = { workspace = true }
-slab = "0.4.8"
-
-[target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.61"
-default-features = false
-features = [
-    "Win32_Foundation",
-    "Win32_System_Console",
-]
 
 [dev-dependencies]
 async-io = { workspace = true }

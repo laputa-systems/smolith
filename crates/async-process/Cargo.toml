@@ -29,12 +29,9 @@ async-lock = { workspace = true }
 async-signal = { workspace = true }
 rustix = { version = "1.0", default-features = false, features = ["std", "fs", "process"] }
 
-[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 async-channel = { workspace = true }
 async-task = { workspace = true }
-
-[target.'cfg(windows)'.dependencies]
-blocking = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
@@ -44,11 +41,3 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 [dev-dependencies]
 async-executor = { workspace = true }
-
-[target.'cfg(windows)'.dev-dependencies.windows-sys]
-version = "0.61"
-default-features = false
-features = [
-    "Win32_Foundation",
-    "Win32_System_Threading",
-]

@@ -26,9 +26,3 @@ futures-lite = { workspace = true }
 
 [target.'cfg(unix)'.dev-dependencies]
 libc = "0.2.78"
-
-[target.'cfg(windows)'.dev-dependencies.windows-sys]
-version = "0.61"
-features = [
-    "Win32_Storage_FileSystem",
-]

@@ -11,16 +11,3 @@ fn unix_sleep() {
         assert!(status.success());
     });
 }
-
-#[cfg(windows)]
-#[test]
-fn windows_sleep() {
-    block_on(async {
-        let status = Command::new("ping")
-            .args(["-n", "5", "127.0.0.1"])
-            .status()
-            .await
-            .unwrap();
-        assert!(status.success());
-    });
-}

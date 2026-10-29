@@ -1,4 +1,4 @@
-//! Portable interface to epoll, kqueue, event ports, and IOCP.
+//! Portable interface to epoll, kqueue, event ports, and poll.
 //!
 //! Supported platforms:
 //! - [epoll](https://en.wikipedia.org/wiki/Epoll): Linux, Android, RedoxOS
@@ -6,7 +6,6 @@
 //!   DragonFly BSD
 //! - [event ports](https://illumos.org/man/port_create): illumos, Solaris
 //! - [poll](https://en.wikipedia.org/wiki/Poll_(Unix)): VxWorks, Fuchsia, HermitOS, other Unix systems
-//! - [IOCP](https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports): Windows, Wine (version 7.13+)
 //!
 //! By default, polling is done in oneshot mode, which means interest in I/O events needs to
 //! be re-enabled after an event is delivered if we're interested in the next event of the same
@@ -111,9 +110,6 @@ cfg_if! {
     ))] {
         mod poll;
         use poll as sys;
-    } else if #[cfg(target_os = "windows")] {
-        mod iocp;
-        use iocp as sys;
     } else {
         compile_error!("polling does not support this target OS");
     }
@@ -233,7 +229,6 @@ impl Event {
     ///
     /// - `epoll`
     /// - `poll`
-    /// - IOCP
     /// - Event Ports
     ///
     /// On other platforms, this function is a no-op.
@@ -251,7 +246,6 @@ impl Event {
     ///
     /// - `epoll`
     /// - `poll`
-    /// - IOCP
     /// - Event Ports
     ///
     /// On other platforms, this function is a no-op.
@@ -270,7 +264,6 @@ impl Event {
     ///
     /// - `epoll`
     /// - `poll`
-    /// - IOCP
     /// - Event Ports
     ///
     /// On other platforms, this function is a no-op.
@@ -288,7 +281,6 @@ impl Event {
     ///
     /// - `epoll`
     /// - `poll`
-    /// - IOCP
     /// - Event Ports
     ///
     /// On other platforms, this function is a no-op.
@@ -307,7 +299,6 @@ impl Event {
     ///
     /// - `epoll`
     /// - `poll`
-    /// - IOCP
     /// - Event Ports
     ///
     /// On other platforms, this always returns `false`.
@@ -325,7 +316,6 @@ impl Event {
     ///
     /// - `epoll`
     /// - `poll`
-    /// - IOCP
     /// - Event Ports
     ///
     /// On other platforms, this always returns `false`.
@@ -336,8 +326,7 @@ impl Event {
 
     /// Tells if this event is the result of a connection failure.
     ///
-    /// This function checks if a TCP connection has failed. It corresponds to the `EPOLLERR`  or `EPOLLHUP` event in Linux
-    /// and `CONNECT_FAILED` event in Windows IOCP.
+    /// This function checks if a TCP connection has failed. It corresponds to the `EPOLLERR` or `EPOLLHUP` event in Linux.
     ///
     /// # Examples
     ///
@@ -399,8 +388,7 @@ impl Event {
 
     /// Tells if this event is the result of a connection failure.
     ///
-    /// This function checks if an error exist, particularly useful in detecting if TCP connection failed. It corresponds to the `EPOLLERR` event in Linux
-    /// and `CONNECT_FAILED` event in Windows IOCP.
+    /// This function checks if an error exist, particularly useful in detecting if TCP connection failed. It corresponds to the `EPOLLERR` event in Linux.
     ///
     /// ## Caveats
     ///
@@ -1026,25 +1014,6 @@ mod raw_fd_impl {
     }
 }
 
-#[cfg(windows)]
-#[cfg_attr(docsrs, doc(cfg(windows)))]
-mod raw_handle_impl {
-    use crate::Poller;
-    use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, RawHandle};
-
-    impl AsRawHandle for Poller {
-        fn as_raw_handle(&self) -> RawHandle {
-            self.poller.as_raw_handle()
-        }
-    }
-
-    impl AsHandle for Poller {
-        fn as_handle(&self) -> BorrowedHandle<'_> {
-            self.poller.as_handle()
-        }
-    }
-}
-
 impl fmt::Debug for Poller {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.poller.fmt(f)
@@ -1085,36 +1054,6 @@ cfg_if! {
         }
 
         impl<T: AsFd> AsSource for T {}
-    } else if #[cfg(windows)] {
-        use std::os::windows::io::{AsRawSocket, RawSocket, AsSocket, BorrowedSocket};
-
-        /// A resource with a raw socket.
-        pub trait AsRawSource {
-            /// Returns the raw socket.
-            fn raw(&self) -> RawSocket;
-        }
-
-        impl<T: AsRawSocket> AsRawSource for &T {
-            fn raw(&self) -> RawSocket {
-                self.as_raw_socket()
-            }
-        }
-
-        impl AsRawSource for RawSocket {
-            fn raw(&self) -> RawSocket {
-                *self
-            }
-        }
-
-        /// A resource with a borrowed socket.
-        pub trait AsSource: AsSocket {
-            /// Returns the borrowed socket.
-            fn source(&self) -> BorrowedSocket<'_> {
-                self.as_socket()
-            }
-        }
-
-        impl<T: AsSocket> AsSource for T {}
     }
 }
 
