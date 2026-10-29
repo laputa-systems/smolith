@@ -188,8 +188,9 @@ impl Header {
         // then we need to decide how to destroy the task.
         if new & !(REFERENCE - 1) == 0 && new & TASK == 0 {
             if new & (COMPLETED | CLOSED) == 0 {
-                // If the task was not completed nor closed, close it and schedule one more time so
-                // that its future gets dropped by the executor.
+                // Count the publication before the store that commits to enqueueing.
+                // The caller ends the bracket after that enqueue returns.
+                ((*header).vtable.begin_schedule)(ptr);
                 (*header)
                     .state
                     .store(SCHEDULED | CLOSED | REFERENCE, Ordering::Release);

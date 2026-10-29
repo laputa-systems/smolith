@@ -24,8 +24,20 @@ pub(crate) type Panic = core::convert::Infallible;
 pub(crate) struct TaskVTable {
     pub(crate) raw_waker_vtable: &'static RawWakerVTable,
 
-    /// Schedules the task.
+    /// Schedules the task. Opens and closes the schedule bracket.
     pub(crate) schedule: unsafe fn(*const (), ScheduleInfo),
+
+    /// Enqueues a runnable. The caller already opened the schedule bracket.
+    pub(crate) enqueue: unsafe fn(*const (), ScheduleInfo),
+
+    /// Opens a schedule attempt before the state transition that commits to it.
+    pub(crate) begin_schedule: unsafe fn(*const ()),
+
+    /// Runs after that transition and before [`TaskVTable::enqueue`].
+    pub(crate) before_enqueue: unsafe fn(*const ()),
+
+    /// Closes the attempt opened by [`TaskVTable::begin_schedule`].
+    pub(crate) end_schedule: unsafe fn(*const ()),
 
     /// Drops the future inside the task.
     pub(crate) drop_future: unsafe fn(*const (), &TaskLayout),
@@ -196,6 +208,10 @@ where
     pub(crate) const TASK_VTABLE: TaskVTable = TaskVTable {
         raw_waker_vtable: &Self::RAW_WAKER_VTABLE,
         schedule: schedule::<S, M>,
+        enqueue: enqueue::<S, M>,
+        begin_schedule: begin_schedule_hook::<S, M>,
+        before_enqueue: before_enqueue_hook::<S, M>,
+        end_schedule: end_schedule_hook::<S, M>,
         drop_future: drop_future::<F>,
         destroy: destroy::<S, M>,
         run: Self::run,
@@ -503,10 +519,63 @@ impl<F: Fn()> Drop for EndSchedule<F> {
     }
 }
 
+/// Keeps the task allocation alive until `end_schedule` has returned.
+///
+/// `Drop::drop` runs before fields are dropped, so the end hook runs while
+/// `waker` still owns a reference. Declare this after any guard that must run
+/// later: locals drop in reverse declaration order, and this type's own drop
+/// ends the attempt before its waker does.
+pub(crate) struct OpenSchedule {
+    ptr: *const (),
+    waker: ManuallyDrop<Waker>,
+}
+
+impl OpenSchedule {
+    /// # Safety
+    ///
+    /// `ptr` points at a live task, and `begin_schedule` for this attempt has
+    /// already run.
+    pub(crate) unsafe fn after_begin(ptr: *const ()) -> Self {
+        Self {
+            ptr,
+            waker: ManuallyDrop::new(Waker::from_raw(Header::clone_waker(ptr))),
+        }
+    }
+}
+
+impl Drop for OpenSchedule {
+    fn drop(&mut self) {
+        unsafe {
+            let header = self.ptr as *const Header;
+            ((*header).vtable.end_schedule)(self.ptr);
+            ManuallyDrop::drop(&mut self.waker);
+        }
+    }
+}
+
 unsafe fn schedule_ref<S>(ptr: *const ()) -> *const S {
     let header = ptr as *const Header;
     let task_layout = (*header).vtable.layout_info;
     ptr.add_byte(task_layout.offset_s) as *const S
+}
+
+unsafe fn begin_schedule_hook<S: Schedule<M>, M>(ptr: *const ()) {
+    (*schedule_ref::<S>(ptr)).begin_schedule();
+}
+
+unsafe fn before_enqueue_hook<S: Schedule<M>, M>(ptr: *const ()) {
+    (*schedule_ref::<S>(ptr)).before_enqueue();
+}
+
+unsafe fn end_schedule_hook<S: Schedule<M>, M>(ptr: *const ()) {
+    (*schedule_ref::<S>(ptr)).end_schedule();
+}
+
+/// Passes a runnable to the schedule function. The caller holds the bracket.
+unsafe fn enqueue<S: Schedule<M>, M>(ptr: *const (), info: ScheduleInfo) {
+    let hooks = &*schedule_ref::<S>(ptr);
+    let runnable = Runnable::from_raw(NonNull::new_unchecked(ptr as *mut ()));
+    hooks.schedule(runnable, info);
 }
 
 /// Schedules a task for running.
@@ -514,20 +583,14 @@ unsafe fn schedule_ref<S>(ptr: *const ()) -> *const S {
 /// This function doesn't modify the state of the task. It only passes the task reference to
 /// its schedule function.
 unsafe fn schedule<S: Schedule<M>, M>(ptr: *const (), info: ScheduleInfo) {
+    // Locals drop in reverse declaration order. The waker has to outlive the end
+    // hook: the callback can drop the runnable and free the task.
+    let _waker = Waker::from_raw(Header::clone_waker(ptr));
     let hooks = &*schedule_ref::<S>(ptr);
     hooks.begin_schedule();
     let _end = EndSchedule(|| hooks.end_schedule());
-
-    // If the schedule function has captured variables, create a temporary waker that prevents
-    // the task from getting deallocated while the function is being invoked.
-    let _waker;
-    if mem::size_of::<S>() > 0 {
-        _waker = Waker::from_raw(Header::clone_waker(ptr));
-    }
-
     hooks.before_enqueue();
-    let task = Runnable::from_raw(NonNull::new_unchecked(ptr as *mut ()));
-    hooks.schedule(task, info);
+    enqueue::<S, M>(ptr, info);
 }
 
 /// Drops a waker.
@@ -539,7 +602,13 @@ unsafe fn schedule<S: Schedule<M>, M>(ptr: *const (), info: ScheduleInfo) {
 unsafe fn drop_waker(ptr: *const ()) {
     let header = ptr as *const Header;
     match Header::drop_waker(ptr) {
-        DropWakerAction::Schedule => ((*header).vtable.schedule)(ptr, ScheduleInfo::new(false)),
+        DropWakerAction::Schedule => {
+            // `Header::drop_waker` opened the bracket before it committed to
+            // scheduling. This waker keeps that allocation alive through the end hook.
+            let _held = OpenSchedule::after_begin(ptr);
+            ((*header).vtable.before_enqueue)(ptr);
+            ((*header).vtable.enqueue)(ptr, ScheduleInfo::new(false));
+        }
         DropWakerAction::Destroy => ((*header).vtable.destroy)(ptr),
         DropWakerAction::None => {}
     }

@@ -96,11 +96,11 @@ impl ScheduleInfo {
 
 /// The trait for scheduling functions.
 pub trait Schedule<M = ()>: sealed::Sealed<M> {
-    /// Marks the start of a wake or an explicit schedule.
+    /// Marks the start of a wake, cancellation, or explicit schedule.
     ///
+    /// Called before the state transition that commits the attempt to enqueue a runnable.
     /// Paired with [`end_schedule`](Self::end_schedule) when that attempt returns, including
-    /// when it does not publish a runnable. The pair stays open across follow-up work on the
-    /// same attempt, such as dropping the waker that caused it.
+    /// when it does not publish a runnable.
     #[inline]
     fn begin_schedule(&self) {}
 

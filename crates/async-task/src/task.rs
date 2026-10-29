@@ -8,7 +8,7 @@ use core::sync::atomic::Ordering;
 use core::task::{Context, Poll};
 
 use crate::header::{Header, HeaderWithMetadata};
-use crate::raw::Panic;
+use crate::raw::{OpenSchedule, Panic};
 use crate::state::*;
 use crate::ScheduleInfo;
 
@@ -259,7 +259,13 @@ fn set_detached<T>(ptr: *const ()) -> Option<Result<T, Panic>> {
                         state & !TASK
                     };
 
-                    // Unset the `TASK` flag.
+                    // A last reference that is still open has to be scheduled so the
+                    // executor drops the future. Count that publication before the swap.
+                    let schedules = state & (!(REFERENCE - 1) | CLOSED) == 0;
+                    if schedules {
+                        ((*header).vtable.begin_schedule)(ptr);
+                    }
+
                     match (*header).state.compare_exchange_weak(
                         state,
                         new,
@@ -269,17 +275,22 @@ fn set_detached<T>(ptr: *const ()) -> Option<Result<T, Panic>> {
                         Ok(_) => {
                             // If this is the last reference to the task, we need to either
                             // schedule dropping its future or destroy it.
-                            if state & !(REFERENCE - 1) == 0 {
-                                if state & CLOSED == 0 {
-                                    ((*header).vtable.schedule)(ptr, ScheduleInfo::new(false));
-                                } else {
-                                    ((*header).vtable.destroy)(ptr);
-                                }
+                            if schedules {
+                                let _held = OpenSchedule::after_begin(ptr);
+                                ((*header).vtable.before_enqueue)(ptr);
+                                ((*header).vtable.enqueue)(ptr, ScheduleInfo::new(false));
+                            } else if state & !(REFERENCE - 1) == 0 {
+                                ((*header).vtable.destroy)(ptr);
                             }
 
                             break;
                         }
-                        Err(s) => state = s,
+                        Err(s) => {
+                            if schedules {
+                                ((*header).vtable.end_schedule)(ptr);
+                            }
+                            state = s;
+                        }
                     }
                 }
             }
@@ -304,11 +315,17 @@ fn set_canceled(ptr: *const ()) {
             }
 
             // If the task is not scheduled nor running, we'll need to schedule it.
-            let new = if state & (SCHEDULED | RUNNING) == 0 {
+            let schedules = state & (SCHEDULED | RUNNING) == 0;
+            let new = if schedules {
                 (state | SCHEDULED | CLOSED) + REFERENCE
             } else {
                 state | CLOSED
             };
+
+            // Count the publication before the swap that commits to enqueueing.
+            if schedules {
+                ((*header).vtable.begin_schedule)(ptr);
+            }
 
             // Mark the task as closed.
             match (*header).state.compare_exchange_weak(
@@ -320,8 +337,10 @@ fn set_canceled(ptr: *const ()) {
                 Ok(_) => {
                     // If the task is not scheduled nor running, schedule it one more time so
                     // that its future gets dropped by the executor.
-                    if state & (SCHEDULED | RUNNING) == 0 {
-                        ((*header).vtable.schedule)(ptr, ScheduleInfo::new(false));
+                    if schedules {
+                        let _held = OpenSchedule::after_begin(ptr);
+                        ((*header).vtable.before_enqueue)(ptr);
+                        ((*header).vtable.enqueue)(ptr, ScheduleInfo::new(false));
                     }
 
                     // Notify the awaiter that the task has been closed.
@@ -331,7 +350,12 @@ fn set_canceled(ptr: *const ()) {
 
                     break;
                 }
-                Err(s) => state = s,
+                Err(s) => {
+                    if schedules {
+                        ((*header).vtable.end_schedule)(ptr);
+                    }
+                    state = s;
+                }
             }
         }
     }

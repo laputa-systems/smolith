@@ -157,7 +157,7 @@ jobs:
         run: cargo miri setup
       - name: task pinning, metadata, and teardown
         run: |
-          cargo miri test --locked -p laputa-async-task --test local_task --test metadata
+          cargo miri test --locked -p laputa-async-task --test local_task --test metadata --test schedule_lifetime
           cargo miri test --locked -p laputa-async-executor --lib shutdown_test
 
   loom:
