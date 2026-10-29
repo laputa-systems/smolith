@@ -113,7 +113,7 @@ mod task;
 mod utils;
 
 pub use crate::runnable::{
-    spawn, spawn_unchecked, Builder, Runnable, Schedule, ScheduleInfo, WithInfo,
+    spawn, spawn_unchecked, Builder, Runnable, Schedule, ScheduleInfo, ScheduleParts, WithInfo,
 };
 pub use crate::task::{FallibleTask, Task};
 

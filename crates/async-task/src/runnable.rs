@@ -96,8 +96,82 @@ impl ScheduleInfo {
 
 /// The trait for scheduling functions.
 pub trait Schedule<M = ()>: sealed::Sealed<M> {
+    /// Marks the start of a wake or an explicit schedule.
+    ///
+    /// Paired with [`end_schedule`](Self::end_schedule) when that attempt returns, including
+    /// when it does not publish a runnable. The pair stays open across follow-up work on the
+    /// same attempt, such as dropping the waker that caused it.
+    #[inline]
+    fn begin_schedule(&self) {}
+
+    /// Runs after the task is marked scheduled and before [`schedule`](Self::schedule).
+    ///
+    /// [`begin_schedule`](Self::begin_schedule) for this attempt has already run.
+    #[inline]
+    fn before_enqueue(&self) {}
+
     /// The actual scheduling procedure.
     fn schedule(&self, runnable: Runnable<M>, info: ScheduleInfo);
+
+    /// Pairs with [`begin_schedule`](Self::begin_schedule).
+    #[inline]
+    fn end_schedule(&self) {}
+}
+
+/// Scheduling callbacks for an executor that has to observe shutdown.
+///
+/// `begin` and `end` bracket a whole wake. `before_enqueue` runs after the task is marked
+/// scheduled and before `schedule` receives the runnable.
+#[doc(hidden)]
+pub struct ScheduleParts<B, P, F, E> {
+    begin: B,
+    before_enqueue: P,
+    schedule: F,
+    end: E,
+}
+
+impl<B, P, F, E> ScheduleParts<B, P, F, E> {
+    /// Combines the four callbacks into one [`Schedule`] value.
+    pub fn new(begin: B, before_enqueue: P, schedule: F, end: E) -> Self {
+        Self {
+            begin,
+            before_enqueue,
+            schedule,
+            end,
+        }
+    }
+}
+
+impl<B, P, F, E> fmt::Debug for ScheduleParts<B, P, F, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ScheduleParts { .. }")
+    }
+}
+
+impl<M, B, P, F, E> sealed::Sealed<M> for ScheduleParts<B, P, F, E> {}
+
+impl<M, B, P, F, E> Schedule<M> for ScheduleParts<B, P, F, E>
+where
+    B: Fn(),
+    P: Fn(),
+    F: Fn(Runnable<M>),
+    E: Fn(),
+{
+    fn begin_schedule(&self) {
+        (self.begin)();
+    }
+
+    fn before_enqueue(&self) {
+        (self.before_enqueue)();
+    }
+
+    fn schedule(&self, runnable: Runnable<M>, _: ScheduleInfo) {
+        (self.schedule)(runnable);
+    }
+
+    fn end_schedule(&self) {
+        (self.end)();
+    }
 }
 
 impl<M, F> Schedule<M> for F

@@ -495,14 +495,28 @@ where
     }
 }
 
+struct EndSchedule<F: Fn()>(F);
+
+impl<F: Fn()> Drop for EndSchedule<F> {
+    fn drop(&mut self) {
+        (self.0)();
+    }
+}
+
+unsafe fn schedule_ref<S>(ptr: *const ()) -> *const S {
+    let header = ptr as *const Header;
+    let task_layout = (*header).vtable.layout_info;
+    ptr.add_byte(task_layout.offset_s) as *const S
+}
+
 /// Schedules a task for running.
 ///
 /// This function doesn't modify the state of the task. It only passes the task reference to
 /// its schedule function.
 unsafe fn schedule<S: Schedule<M>, M>(ptr: *const (), info: ScheduleInfo) {
-    let header = ptr as *const Header;
-    let task_layout = (*header).vtable.layout_info;
-    let schedule = ptr.add_byte(task_layout.offset_s) as *mut S;
+    let hooks = &*schedule_ref::<S>(ptr);
+    hooks.begin_schedule();
+    let _end = EndSchedule(|| hooks.end_schedule());
 
     // If the schedule function has captured variables, create a temporary waker that prevents
     // the task from getting deallocated while the function is being invoked.
@@ -511,8 +525,9 @@ unsafe fn schedule<S: Schedule<M>, M>(ptr: *const (), info: ScheduleInfo) {
         _waker = Waker::from_raw(Header::clone_waker(ptr));
     }
 
+    hooks.before_enqueue();
     let task = Runnable::from_raw(NonNull::new_unchecked(ptr as *mut ()));
-    (*schedule).schedule(task, info);
+    hooks.schedule(task, info);
 }
 
 /// Drops a waker.
@@ -543,6 +558,12 @@ unsafe fn drop_future<F>(ptr: *const (), task_layout: &TaskLayout) {
 
 /// Wakes a waker.
 unsafe fn wake<S: Schedule<M>, M>(ptr: *const ()) {
+    let hooks = &*schedule_ref::<S>(ptr);
+    // Stay inside begin/end until drop_waker returns. A last-waker drop can publish another
+    // runnable, and that publication is still part of this wake.
+    hooks.begin_schedule();
+    let _end = EndSchedule(|| hooks.end_schedule());
+
     // This is just an optimization. If the schedule function has captured variables, then
     // we'll do less reference counting if we wake the waker by reference and then drop it.
     if mem::size_of::<S>() > 0 {
@@ -609,9 +630,12 @@ unsafe fn wake<S: Schedule<M>, M>(ptr: *const ()) {
 
 /// Wakes a waker by reference.
 unsafe fn wake_by_ref<S: Schedule<M>, M>(ptr: *const ()) {
+    let hooks = &*schedule_ref::<S>(ptr);
+    hooks.begin_schedule();
+    let _end = EndSchedule(|| hooks.end_schedule());
+
     let header = ptr as *const Header;
     let header = &*header;
-    let task_layout = header.vtable.layout_info;
 
     let mut state = header.state.load(Ordering::Acquire);
 
@@ -657,13 +681,10 @@ unsafe fn wake_by_ref<S: Schedule<M>, M>(ptr: *const ()) {
                             abort();
                         }
 
-                        let schedule = ptr.add_byte(task_layout.offset_s) as *mut S;
-
-                        // Schedule the task. There is no need to call `Self::schedule(ptr)`
-                        // because the schedule function cannot be destroyed while the waker is
-                        // still alive.
+                        // The task is scheduled, and the runnable is not in a queue yet.
+                        hooks.before_enqueue();
                         let task = Runnable::from_raw(NonNull::new_unchecked(ptr as *mut ()));
-                        (*schedule).schedule(task, ScheduleInfo::new(false));
+                        hooks.schedule(task, ScheduleInfo::new(false));
                     }
 
                     break;
