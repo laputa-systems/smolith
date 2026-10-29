@@ -1,0 +1,16 @@
+[package]
+name = "smolith-consumer"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+license = "Apache-2.0 OR MIT"
+description = "External consumer proving laputa-smol trait interop"
+
+[workspace]
+resolver = "2"
+
+[dependencies]
+futures-core = "0.3.5"
+futures-io = "0.3.28"
+smol = { package = "laputa-smol", version = "0.1.0", path = "../../crates/smol" }
