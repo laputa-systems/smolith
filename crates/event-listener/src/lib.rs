@@ -1479,6 +1479,16 @@ pub mod __private {
 
     pin_project_lite::pin_project! {
         /// Space on the stack where a stack-based listener can be allocated.
+        ///
+        /// ```compile_fail,E0277
+        /// fn assert_send<T: Send>() {}
+        /// assert_send::<event_listener::__private::StackSlot<'_, &std::cell::Cell<i32>>>();
+        /// ```
+        ///
+        /// ```compile_fail,E0277
+        /// fn assert_sync<T: Sync>() {}
+        /// assert_sync::<event_listener::__private::StackSlot<'_, &std::cell::Cell<i32>>>();
+        /// ```
         #[doc(hidden)]
         #[project(!Unpin)]
         pub struct StackSlot<'ev, T> {
