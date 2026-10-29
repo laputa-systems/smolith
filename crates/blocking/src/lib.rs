@@ -114,6 +114,28 @@ use piper::{pipe, Reader, Writer};
 #[doc(no_inline)]
 pub use async_task::Task;
 
+#[cfg(test)]
+static SPAWN_FAILURES: AtomicUsize = AtomicUsize::new(0);
+
+fn consume_spawn_failure() -> bool {
+    #[cfg(test)]
+    {
+        let mut current = SPAWN_FAILURES.load(Ordering::SeqCst);
+        while current > 0 {
+            match SPAWN_FAILURES.compare_exchange(
+                current,
+                current - 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return true,
+                Err(observed) => current = observed,
+            }
+        }
+    }
+    false
+}
+
 /// Default value for max threads that Executor can grow to
 #[cfg(not(target_family = "wasm"))]
 const DEFAULT_MAX_THREADS: NonZeroUsize = {
@@ -337,57 +359,57 @@ impl Executor {
         )
         .entered();
 
-        let thread_limit = inner
-            .thread_limit
-            .get_or_insert_with(Self::max_threads)
-            .get();
+        loop {
+            let thread_limit = inner
+                .thread_limit
+                .get_or_insert_with(Self::max_threads)
+                .get();
 
-        // If runnable tasks greatly outnumber idle threads and there aren't too many threads
-        // already, then be aggressive: wake all idle threads and spawn one more thread.
-        while inner.queue.len() > inner.idle_count * 5 && inner.thread_count < thread_limit {
+            if inner.queue.len() <= inner.idle_count * 5 || inner.thread_count >= thread_limit {
+                return;
+            }
+
             #[cfg(feature = "tracing")]
             tracing::trace!("spawning a new thread to handle blocking tasks");
 
-            // The new thread starts in idle state.
             inner.idle_count += 1;
             inner.thread_count += 1;
-
-            // Notify all existing idle threads because we need to hurry up.
             self.cvar.notify_all();
 
-            // Generate a new thread ID.
             static ID: AtomicUsize = AtomicUsize::new(1);
             let id = ID.fetch_add(1, Ordering::Relaxed);
 
-            // Spawn the new thread.
-            if let Err(_e) = thread::Builder::new()
-                .name(format!("blocking-{id}"))
-                .spawn(move || self.main_loop())
-            {
-                // We were unable to spawn the thread, so we need to undo the state changes.
+            if consume_spawn_failure() {
+                roll_back_failed_spawn(&mut inner);
+                return;
+            }
+
+            let name = format!("blocking-{id}");
+            drop(inner);
+            let spawned = thread::Builder::new()
+                .name(name)
+                .spawn(move || self.main_loop());
+            inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+
+            if let Err(_e) = spawned {
                 #[cfg(feature = "tracing")]
                 tracing::error!("failed to spawn a blocking thread: {}", _e);
-                inner.idle_count -= 1;
-                inner.thread_count -= 1;
-
-                // The current number of threads is likely to be the system's upper limit, so update
-                // thread_limit accordingly.
-                inner.thread_limit = {
-                    let new_limit = inner.thread_count;
-
-                    // If the limit is about to be set to zero, set it to one instead so that if,
-                    // in the future, we are able to spawn more threads, we will be able to do so.
-                    Some(NonZeroUsize::new(new_limit).unwrap_or_else(|| {
-                        #[cfg(feature = "tracing")]
-                        tracing::warn!(
-                            "attempted to lower thread_limit to zero; setting to one instead"
-                        );
-                        NonZeroUsize::new(1).unwrap()
-                    }))
-                };
+                roll_back_failed_spawn(&mut inner);
+                return;
             }
         }
     }
+}
+
+fn roll_back_failed_spawn(inner: &mut Inner) {
+    inner.idle_count -= 1;
+    inner.thread_count -= 1;
+    let new_limit = inner.thread_count;
+    inner.thread_limit = Some(NonZeroUsize::new(new_limit).unwrap_or_else(|| {
+        #[cfg(feature = "tracing")]
+        tracing::warn!("attempted to lower thread_limit to zero; setting to one instead");
+        NonZeroUsize::new(1).unwrap()
+    }));
 }
 
 /// Runs blocking code on a thread pool.
@@ -1036,6 +1058,30 @@ impl<T: Seek + Send + 'static> AsyncSeek for Unblock<T> {
 #[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
+
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    struct ResetSpawnFailures;
+
+    impl Drop for ResetSpawnFailures {
+        fn drop(&mut self) {
+            SPAWN_FAILURES.store(0, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn spawn_failure_returns() {
+        let _reset = ResetSpawnFailures;
+        SPAWN_FAILURES.store(1_000, Ordering::SeqCst);
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let _task = unblock(|| ());
+            tx.send(()).unwrap();
+        });
+        rx.recv_timeout(Duration::from_secs(1))
+            .expect("schedule returned");
+    }
 
     #[test]
     fn test_max_threads() {
