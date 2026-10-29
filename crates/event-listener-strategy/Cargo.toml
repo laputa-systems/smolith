@@ -1,6 +1,5 @@
 [package]
 name = "laputa-event-listener-strategy"
-# Make sure to update CHANGELOG.md when the version is bumped here.
 version.workspace = true
 edition = "2021"
 authors = ["John Nunley <dev@notgull.net>"]

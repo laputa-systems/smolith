@@ -1,8 +1,5 @@
 [package]
 name = "laputa-async-dup"
-# When publishing a new version:
-# - Update CHANGELOG.md
-# - Create "v1.x.y" git tag
 version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 edition = "2021"

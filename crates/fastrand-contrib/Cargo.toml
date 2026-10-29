@@ -1,6 +1,5 @@
 [package]
 name = "laputa-fastrand-contrib"
-# Make sure to modify CHANGELOG.md before releasing a new version.
 version.workspace = true
 authors = ["John Nunley <dev@notgull.net>", "Petr Nevyhoštěný <petr.nevyhosteny@gmail.com>"]
 edition = "2018"

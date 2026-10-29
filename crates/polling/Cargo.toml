@@ -1,8 +1,5 @@
 [package]
 name = "laputa-polling"
-# When publishing a new version:
-# - Update CHANGELOG.md
-# - Create "v3.x.y" git tag
 version.workspace = true
 authors = ["Stjepan Glavina <stjepang@gmail.com>", "John Nunley <dev@notgull.net>"]
 edition = "2021"

@@ -1,8 +1,5 @@
 [package]
 name = "laputa-blocking"
-# When publishing a new version:
-# - Update CHANGELOG.md
-# - Create "v1.x.y" git tag
 version.workspace = true
 edition = "2021"
 rust-version.workspace = true
