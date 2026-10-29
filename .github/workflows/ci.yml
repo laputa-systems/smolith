@@ -84,9 +84,15 @@ jobs:
   musl:
     name: musl check
     runs-on: ubuntu-latest
+    env:
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      AR_x86_64_unknown_linux_musl: ar
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
     steps:
       - name: checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: musl c toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
