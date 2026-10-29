@@ -504,6 +504,7 @@ where
 pub struct Unblock<T> {
     state: State<T>,
     cap: Option<usize>,
+    write_error: Option<io::Error>,
 }
 
 impl<T> Unblock<T> {
@@ -520,6 +521,7 @@ impl<T> Unblock<T> {
         Unblock {
             state: State::Idle(Some(Box::new(io))),
             cap: None,
+            write_error: None,
         }
     }
 
@@ -546,6 +548,7 @@ impl<T> Unblock<T> {
         Unblock {
             state: State::Idle(Some(Box::new(io))),
             cap: Some(cap),
+            write_error: None,
         }
     }
 
@@ -932,7 +935,11 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         loop {
-            match &mut self.state {
+            if let Some(err) = self.write_error.take() {
+                return Poll::Ready(Err(err));
+            }
+
+            let finished = match &mut self.state {
                 // If not in idle or active writing state, stop the running task.
                 State::WithMut(..)
                 | State::Writing(None, _)
@@ -941,6 +948,7 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
                 | State::Seeking(..) => {
                     // Wait for the running task to stop.
                     ready!(self.poll_stop(cx))?;
+                    None
                 }
 
                 // If idle, start the writing task.
@@ -971,16 +979,52 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
 
                     // Move into the busy state and poll again.
                     self.state = State::Writing(Some(writer), task);
+                    None
                 }
 
                 // If writing, write more bytes into the pipe.
-                State::Writing(Some(writer), _) => return writer.poll_fill(cx, buf),
+                State::Writing(Some(writer), task) => {
+                    let mut accepted = None;
+                    if !writer.is_closed() {
+                        match writer.poll_fill(cx, buf) {
+                            Poll::Pending => return Poll::Pending,
+                            Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+                            Poll::Ready(Ok(n)) if !writer.is_closed() => {
+                                return Poll::Ready(Ok(n));
+                            }
+                            Poll::Ready(Ok(n)) => accepted = Some(n),
+                        }
+                    }
+
+                    match Pin::new(task).poll(cx) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready((res, io)) => Some((res, io, accepted)),
+                    }
+                }
+            };
+
+            if let Some((res, io, accepted)) = finished {
+                self.state = State::Idle(Some(io));
+                match res {
+                    Ok(()) => {
+                        if let Some(n) = accepted {
+                            if n > 0 {
+                                return Poll::Ready(Ok(n));
+                            }
+                        }
+                        return Poll::Ready(Ok(0));
+                    }
+                    Err(err) => self.write_error = Some(err),
+                }
             }
         }
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         loop {
+            if let Some(err) = self.write_error.take() {
+                return Poll::Ready(Err(err));
+            }
             match &mut self.state {
                 // If not in idle state, stop the running task.
                 State::WithMut(..)
