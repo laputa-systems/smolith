@@ -8,7 +8,7 @@ description = "Extension functionality for fastrand"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/laputa-systems/smolith"
 keywords = ["simple", "fast", "rand", "random", "wyrand"]
-categories = ["algorithm"]
+categories = ["algorithms"]
 exclude = ["/.*"]
 
 [lib]

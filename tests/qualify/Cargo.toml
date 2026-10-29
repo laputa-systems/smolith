@@ -32,4 +32,4 @@ async-net = { workspace = true }
 concurrent-queue = { workspace = true, features = ["std"] }
 event-listener = { workspace = true, features = ["std"] }
 polling = { workspace = true }
-smol = { package = "laputa-smol", version = "0.1.0", path = "../../crates/smol" }
+smol = { package = "laputa-smol", version = "0.2.0", path = "../../crates/smol" }
