@@ -70,7 +70,7 @@
 | Advisory ID | Component | Published Package | Severity | Affected Versions | Patched Version | Disposition | Evidence |
 |:---|:---|:---|:---|:---|:---|:---|:---|
 | [RUSTSEC-2026-0221](https://rustsec.org/advisories/RUSTSEC-2026-0221.html) | `event-listener` | `laputa-event-listener` | High (Unsoundness / Data race) | `>= 5.1.0, < 5.4.2` | `>= 5.4.2` | Pinned import is 5.4.2 (commit `77004ac77dce`). Verified in S06 with regression tests. | `4870f33` compile-fail doctests in `crates/event-listener/src/lib.rs` and `crates/event-listener/tests/notify.rs`. |
-| [RUSTSEC-2021-0145](https://rustsec.org/advisories/RUSTSEC-2021-0145.html) | `concurrent-queue` | `laputa-concurrent-queue` | Low (Unaligned read) | `< 2.0.0` | `>= 2.0.0` | Historical advisory; upstream version is 2.5.0, unaffected. Verified in S06. | Upstream 2.5.0 architecture clean. |
+| [RUSTSEC-2021-0145](https://rustsec.org/advisories/RUSTSEC-2021-0145.html) | `atty` | not a published Laputa crate | Informational (unsound, Windows-only) | no patched release | none | Not a `concurrent-queue` advisory. `atty` 0.2.14 is a dependency of `criterion` 0.3, used only from benches. `concurrent-queue` has no RustSec entry. | Advisory database `crates/atty/RUSTSEC-2021-0145.md`, checked by `tools/advisory-scan.sh`. |
 
 ## Component Issue & PR Registers
 

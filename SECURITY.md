@@ -1,0 +1,7 @@
+# Security
+
+Report a vulnerability in this repository through [GitHub private advisories](https://github.com/laputa-systems/smolith/security/advisories/new). A vulnerability that is not fixed yet does not belong in a public issue.
+
+Published crates are named `laputa-<upstream-name>`. RustSec records the upstream crate name. [`UPSTREAM.toml`](UPSTREAM.toml) maps each `upstream_name` and `upstream_version` to the `laputa-*` package. Matching only the renamed packages is not a scan: those names are absent from the advisory database. `tools/advisory-scan.sh` checks every component at its upstream version, then checks registry packages reached by normal and build dependencies. Dev-only hits are printed and do not fail the scan.
+
+`laputa-event-listener` tracks event-listener 5.4.2, which is outside [RUSTSEC-2026-0221](https://rustsec.org/advisories/RUSTSEC-2026-0221) (`>= 5.1.0, < 5.4.2`). The advisory database has no entry for `concurrent-queue`. `laputa-concurrent-queue` tracks concurrent-queue 2.5.0. [RUSTSEC-2021-0145](https://rustsec.org/advisories/RUSTSEC-2021-0145) is an informational Windows-only report against `atty`, reached from the `criterion` dev-dependency, not from a published Laputa crate.

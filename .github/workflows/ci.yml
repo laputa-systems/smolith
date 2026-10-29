@@ -1,0 +1,99 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: clippy, test, graph, advisory
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+      - name: clippy
+        run: cargo clippy --workspace --all-targets
+      - name: test
+        run: cargo test --workspace
+      - name: feature and target check
+        run: cargo check --workspace --all-features --all-targets
+      - name: graph gate
+        run: tools/graph-gate.sh
+      - name: advisory scan
+        run: tools/advisory-scan.sh
+
+  consumer-and-fixture:
+    name: consumer and h12tiny fixture
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+      - name: external consumer
+        run: tests/consumer/check.sh
+      - name: h12tiny fixture
+        run: fixtures/h12tiny.sh
+
+  package:
+    name: staging registry package
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+      - name: publish to staging and consume
+        run: tools/stage.sh
+
+  macos:
+    name: macos test
+    runs-on: macos-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+      - name: test
+        run: cargo test --workspace
+
+  musl:
+    name: musl check
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+          targets: x86_64-unknown-linux-musl
+      - name: musl libs and tests except laputa-smol
+        run: cargo check --workspace --lib --tests --target x86_64-unknown-linux-musl --exclude laputa-smol
+      - name: musl laputa-smol lib
+        run: cargo check -p laputa-smol --lib --target x86_64-unknown-linux-musl
