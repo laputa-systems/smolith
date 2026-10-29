@@ -1013,7 +1013,7 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
                         }
                     });
 
-                    // Move into the busy state and poll again.
+                    self.needs_flush = true;
                     self.state = State::Writing(Some(writer), task);
                     None
                 }

@@ -201,3 +201,48 @@ fn flush_retries_after_the_inner_flush_fails() {
         });
     });
 }
+
+struct HoldUntilFlush {
+    committed: Vec<u8>,
+    pending: Vec<u8>,
+    flushes: usize,
+}
+
+impl Write for HoldUntilFlush {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.flushes += 1;
+        if self.flushes == 2 {
+            return Err(io::Error::new(ErrorKind::Other, "flush"));
+        }
+        self.committed.extend_from_slice(&self.pending);
+        self.pending.clear();
+        Ok(())
+    }
+}
+
+#[test]
+fn flush_after_a_later_write_retries_a_failed_flush() {
+    finish_within(|| {
+        future::block_on(async {
+            let mut writer = Unblock::new(HoldUntilFlush {
+                committed: Vec::new(),
+                pending: Vec::new(),
+                flushes: 0,
+            });
+            writer.write_all(b"A").await.unwrap();
+            writer.flush().await.unwrap();
+            writer.write_all(b"B").await.unwrap();
+            assert!(writer.flush().await.is_err());
+            writer.flush().await.unwrap();
+            let inner = writer.into_inner().await;
+            assert_eq!(inner.committed, b"AB");
+            assert!(inner.pending.is_empty());
+            assert_eq!(inner.flushes, 3);
+        });
+    });
+}
