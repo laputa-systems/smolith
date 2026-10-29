@@ -19,7 +19,6 @@ bench = false
 
 [dependencies]
 async-io = { workspace = true }
-async-net = { workspace = true }
 blocking = { workspace = true }
 futures-lite = { workspace = true }
 libc = "0.2"
@@ -29,6 +28,7 @@ async-channel = { workspace = true }
 async-executor = { workspace = true }
 async-fs = { workspace = true }
 async-lock = { workspace = true }
+async-net = { workspace = true }
 concurrent-queue = { workspace = true }
 event-listener = { workspace = true }
 polling = { workspace = true }

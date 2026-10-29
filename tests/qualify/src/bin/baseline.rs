@@ -1,10 +1,9 @@
 use std::io::{self, Read as _, Write as _};
-use std::net::{Shutdown, TcpListener};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use async_io::{Async, Timer};
-use async_net::TcpStream as AsyncTcpStream;
 use futures_lite::future::block_on;
 use futures_lite::prelude::*;
 use qualify::cpu_time;
@@ -111,13 +110,13 @@ fn tcp_throughput() {
                 }
             }
         });
-        let mut client = block_on(AsyncTcpStream::connect(addr)).unwrap();
+        let mut client = block_on(Async::<TcpStream>::connect(addr)).unwrap();
         let start = Instant::now();
         block_on(async {
             for _ in 0..rounds {
                 client.write_all(&payload).await.unwrap();
             }
-            client.shutdown(Shutdown::Write).unwrap();
+            client.get_ref().shutdown(Shutdown::Write).unwrap();
         });
         let got = server.join().unwrap();
         let elapsed = start.elapsed();
