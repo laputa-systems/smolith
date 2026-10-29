@@ -5,10 +5,10 @@ Independent monorepo for the complete active no-Tokio smol ecosystem. Repo `smol
 ## Status
 
 - Goal: one clean `smolith` repo with all 26 scoped components, consistent Laputa dependency graph, fixed known soundness bugs, qualified on primary platforms, proven via external consumer plus h12tiny fixture, with unified CI and verified release artifacts.
-- Last accepted: S04 (executor and task soundness). Safe `Builder::spawn` and `spawn_local` now require `M: Send + Sync`; `spawn_unchecked` remains the escape hatch.
-- Accepted slices: S01, S02, S03, S04. Red: none. Parked: none.
-- Next: integrate S05 and S06 when their branches are green, then S07.
-- Resume: lanes are `s05-reactor` and `s06-blocking`. Do not restart them. After both are on `main`, run S07.
+- Last accepted: S06 (blocking, queues, helpers). Integrated suites passed on `main` at `26600ae`.
+- Accepted slices: S01, S02, S03, S04, S05, S06. Red: none. Parked: none.
+- Next: S07, then S07.5, then stop before S08.
+- Resume: S05 and S06 are on `main`. Their branches are deleted. Do not restart them.
 
 ## Charter
 
@@ -33,6 +33,8 @@ Independent monorepo for the complete active no-Tokio smol ecosystem. Repo `smol
 - Delegated: executor picks stable pin at S02 and documents MSRV as the max inherited `rust-version` unless a fix raises it, then verifies with that toolchain. Bound: no historical compiler matrix.
 - Delegated: executor samples per-crate feature combinations beyond the default. Bound: default plus `no_std` plus portable-atomic where they exist, plus each fix's affected feature.
 - Delegated: registry-name collisions. Bound: if any `laputa-*` name is taken, park S02 with evidence and continue all non-packaging work; do not invent an alternate prefix unasked.
+- Owner 2026-10-28: remove Windows support entirely in S07.5, before S08. Reason: no Windows target is in scope. IOCP, `cfg(windows)`, and Windows-only dependencies go. A Windows build must fail loudly.
+- Owner 2026-10-28: no formatting tools. S09 keeps linters such as Clippy and drops rustfmt and other formatters. Reason: formatters are out of scope.
 
 ## Baseline
 
@@ -49,8 +51,9 @@ Independent monorepo for the complete active no-Tokio smol ecosystem. Repo `smol
 - S05 Reactor, polling, networking. Owns `crates/async-io`, `crates/polling`, `crates/async-net`. Prereq: S02, S03. Accept: `cargo test -p laputa-async-io -p laputa-polling -p laputa-async-net` green plus tick-snapshot/wake-replacement, UDP peek loopback, and preserved polling fixes validation on each reachable backend.
 - S06 Blocking, sync, helpers. Owns `crates/blocking`, `crates/concurrent-queue`, `crates/async-channel`, `crates/futures-lite`, `crates/event-listener`, remaining helpers. Prereq: S02, S03. Accept: `cargo test` for the owned set green plus spawn-failure fault injection, idle-retirement checks, write-error propagation, close/overwrite interleaving models, line-reader contracts, and `StackSlot` 5.4.2/RUSTSEC-2026-0221 cross-thread rejection coverage.
 - S07 System qualification. Owns `tests/`, feature-matrix docs, baseline records. Prereq: S04-S06. Accept: `cargo test --workspace` on reachable primary targets green with bounded watchdogs; cancellation, destruction, rearm, timer, syscall-interrupt, descriptor-reuse, shutdown, exhaustion, and close/cleanup boundaries exercised; sanitizer plus model/interleaving runs for touched races; idle/wake/latency/throughput measured against S06 baselines with material regressions investigated.
-- S08 External consumer and h12tiny fixture. Owns `tests/consumer/`, `fixtures/h12tiny.*`. Prereq: S02, S07. Accept: clean consumer without workspace patches resolves everything to `laputa-*` with trait interop checked; fixture script pins an immutable h12tiny commit, records its unmodified baseline, redirects edges preserving aliases, regenerates the lockfile with minimal changes, and runs the applicable HTTP/1, HTTP/2, TLS, cancellation, reuse, backpressure, timeout, and shutdown gates with fixture gaps named, never reported as passed when unrun.
-- S09 CI and release tooling. Integrator-owned: `.github/workflows/`, packaging scripts, `SECURITY.md` advisory mapping via `UPSTREAM.toml`. Prereq: S07-S08. Accept: root workflows cover fmt, Clippy, tests/doctests, feature/target combos, graph gate, advisory scan mapped via `UPSTREAM.toml`, concurrency checks, consumer plus fixture, and packaging with Actions pinned to SHAs; `cargo package --dry-run` plus staging-registry build and fresh-consumer check without `--no-verify`; license files and dependency names verified on normalized artifacts; a clean scan of renamed packages alone is not evidence, mapping through original names in `UPSTREAM.toml` is required.
+- S07.5 Drop Windows. Owns every `cfg(windows)`, IOCP, and Windows-only dependency under `crates/`. Prereq: S07. Accept: `rg` finds no `cfg(windows)`, `target_os = "windows"`, `windows-sys`, or `winapi` in `*.rs` and `*.toml`; `cargo test --workspace` still green on the host; a Windows target fails at compile time.
+- S08 External consumer and h12tiny fixture. Owns `tests/consumer/`, `fixtures/h12tiny.*`. Prereq: S02, S07.5. Accept: clean consumer without workspace patches resolves everything to `laputa-*` with trait interop checked; fixture script pins an immutable h12tiny commit, records its unmodified baseline, redirects edges preserving aliases, regenerates the lockfile with minimal changes, and runs the applicable HTTP/1, HTTP/2, TLS, cancellation, reuse, backpressure, timeout, and shutdown gates with fixture gaps named, never reported as passed when unrun.
+- S09 CI and release tooling. Integrator-owned: `.github/workflows/`, packaging scripts, `SECURITY.md` advisory mapping via `UPSTREAM.toml`. Prereq: S07.5-S08. Accept: root workflows cover Clippy and other linters, tests/doctests, feature/target combos, graph gate, advisory scan mapped via `UPSTREAM.toml`, concurrency checks, consumer plus fixture, and packaging with Actions pinned to SHAs. No rustfmt and no other formatter. `cargo package --dry-run` plus staging-registry build and fresh-consumer check without `--no-verify`; license files and dependency names verified on normalized artifacts; a clean scan of renamed packages alone is not evidence, mapping through original names in `UPSTREAM.toml` is required.
 - S10 Docs and close. Owns `README.md`, `CHANGELOG.md`, `SECURITY.md`, `AGENTS.md`, final `UPSTREAM.toml`, dead-code deletion. Prereq: all above. Accept: `mdtool check` clean, full suite at close green, `ultrareview` P1/P2 fixed, `SECURITY.md` carries private-reporting guidance, tree clean with work committed, release tag versus artifacts versus publication distinguished.
 
 Parallel lanes allowed only between disjoint ownership sets: S04 with S05, S04 with S06, S05 with S06. All other items are serial. Manifests, lockfile, package identity, and CI need integrator review. Methods may be revised only for ordering, width, and batching; deliverables, contracts, proof, and effects stay as written.
@@ -68,7 +71,6 @@ Parallel lanes allowed only between disjoint ownership sets: S04 with S05, S04 w
 
 ## Needs environment
 
-- Windows IOCP race validation (polling targets): owner runs `cargo test -p laputa-polling` on Windows host with IOCP backend and reports results.
 - BSD/kqueue specifics beyond reachable macOS runners: owner runs `cargo test -p laputa-polling -p laputa-async-io` on the target BSD and reports.
 - Linux musl aarch64 plus glibc sanitizer runs if Docker is unavailable to the executor: owner runs the S07 workspace and sanitizer jobs per `.github/workflows/` and reports.
 - Full h12tiny TLS plus HTTP/2 matrix on platforms the executor cannot reach: owner runs the S08 fixture script there and reports.
