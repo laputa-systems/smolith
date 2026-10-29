@@ -108,8 +108,19 @@ impl<T> Bounded<T> {
                 .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Relaxed)
                 .is_ok()
             {
-                // Move the tail.
-                self.tail.store(new_tail, Ordering::SeqCst);
+                let mut current = self.tail.load(Ordering::SeqCst);
+                loop {
+                    let updated = (new_tail & !self.mark_bit) | (current & self.mark_bit);
+                    match self.tail.compare_exchange_weak(
+                        current,
+                        updated,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => break,
+                        Err(observed) => current = observed,
+                    }
+                }
 
                 // Swap out the old value.
                 // SAFETY: We know this is initialized, since it's covered by the current queue.

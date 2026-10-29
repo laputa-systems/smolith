@@ -5,7 +5,9 @@ use concurrent_queue::{ConcurrentQueue, ForcePushError, PopError, PushError};
 #[cfg(not(target_family = "wasm"))]
 use easy_parallel::Parallel;
 #[cfg(not(target_family = "wasm"))]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[cfg(not(target_family = "wasm"))]
+use std::thread;
 
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -160,6 +162,35 @@ fn force_push() {
         assert_eq!(q.pop(), Ok(i));
     }
     assert_eq!(q.pop(), Err(PopError::Closed));
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn close_survives_force_push() {
+    const TRIALS: usize = if cfg!(miri) { 20 } else { 5_000 };
+    let mut reopens = 0;
+    for trial in 0..TRIALS {
+        let q = ConcurrentQueue::bounded(2);
+        let stop = AtomicBool::new(false);
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                let mut n = 0u32;
+                while !stop.load(Ordering::Relaxed) && q.force_push(n).is_ok() {
+                    n = n.wrapping_add(1);
+                }
+            });
+            while q.pop().is_err() {}
+            for _ in 0..(trial % 200) * 10 {
+                std::hint::spin_loop();
+            }
+            q.close();
+            stop.store(true, Ordering::Relaxed);
+        });
+        if !q.is_closed() {
+            reopens += 1;
+        }
+    }
+    assert_eq!(reopens, 0, "reopens in {TRIALS} trials");
 }
 
 #[cfg(not(target_family = "wasm"))]
