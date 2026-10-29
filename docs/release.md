@@ -2,7 +2,9 @@
 
 The workspace version is `0.1.0` in the root `Cargo.toml`. Upstream crate versions are only in `UPSTREAM.toml`.
 
-A git tag names a source revision. It does not upload crates. No release tag is part of this tree, and nothing from this tree is published to crates.io.
+A git tag names a source revision. No release tag is part of this tree, and nothing from this tree is published to crates.io yet.
+
+`make publish` bumps the workspace to its next minor version. It commits and tags the release. It publishes the `laputa-*` crates in dependency order. Each release moves to `minor(max(local, registry)) + 1` with the patch reset. A registry that ran ahead becomes the base. The root `Cargo.toml` workspace version owns the release. The script updates that version plus the `laputa-*` versions in `[workspace.dependencies]`. It updates the `[components.*]` versions in `UPSTREAM.toml`. It updates the `laputa-smol` requirements in `tests/qualify` and `tests/consumer`. Member crates inherit the version and carry no literal version. One commit carries the release. Each crate gets a `<name>-v<version>` tag. The script checks for a Cargo registry login before any query or edit. It resumes a partial publication while HEAD stays on the matching release commit. Run it only when releasing. Set `TMPDIR` to the repository's `.work/tmp` for its backup files. Publish this workspace before an h12tiny release that drops its smolith path dependencies.
 
 `tools/stage.sh` is the local publish check. It runs `cargo publish` for all 26 `laputa-*` crates against a localhost sparse index, without `--no-verify`. For that command only, crates.io is replaced by the staging index, which proxies every other crate. The workspace has no `[patch]` table. This nightly has no `cargo package --dry-run`. Publish verifies by packaging and building.
 
