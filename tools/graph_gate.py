@@ -13,6 +13,7 @@ UPSTREAM_NAMES = [
     "fastrand-contrib", "easy-parallel", "waker-fn", "async-dup"
 ]
 EXPECTED_LAPUTA = {f"laputa-{n}" for n in UPSTREAM_NAMES}
+ALLOWED_EXTRA_MEMBERS = {"smolith-qualify"}
 
 def check_no_patches(root_dir):
     root_toml = os.path.join(root_dir, "Cargo.toml")
@@ -62,18 +63,28 @@ def check_metadata(metadata_json, label=""):
     packages_by_id = {p["id"]: p for p in meta["packages"]}
     workspace_members = set(meta["workspace_members"])
 
-    if len(workspace_members) != 26:
-        raise ValueError(f"[{label}] Expected 26 workspace members, got {len(workspace_members)}")
-
-    # Check each workspace member
+    member_names = set()
     for pid in workspace_members:
         p = packages_by_id[pid]
-        if p["name"] not in EXPECTED_LAPUTA:
-            raise ValueError(f"[{label}] Member {p['name']} not in expected laputa-* set")
+        member_names.add(p["name"])
         if p["version"] != "0.1.0":
             raise ValueError(f"[{label}] Member {p['name']} has version {p['version']} != 0.1.0")
         if p["source"] is not None:
             raise ValueError(f"[{label}] Member {p['name']} source is {p['source']}, expected path (None)")
+        if p["name"] in ALLOWED_EXTRA_MEMBERS:
+            manifest = p.get("manifest_path", "")
+            with open(manifest, "r") as handle:
+                if "publish = false" not in handle.read():
+                    raise ValueError(f"[{label}] Extra member {p['name']} must set publish = false")
+        elif p["name"] not in EXPECTED_LAPUTA:
+            raise ValueError(f"[{label}] Member {p['name']} not in expected laputa-* set")
+
+    missing = EXPECTED_LAPUTA - member_names
+    if missing:
+        raise ValueError(f"[{label}] Missing owned members: {sorted(missing)}")
+    unexpected = member_names - EXPECTED_LAPUTA - ALLOWED_EXTRA_MEMBERS
+    if unexpected:
+        raise ValueError(f"[{label}] Unexpected members: {sorted(unexpected)}")
 
     # Check exactly one version per owned component
     for laputa_name in EXPECTED_LAPUTA:

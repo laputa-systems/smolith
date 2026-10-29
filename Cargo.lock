@@ -3223,6 +3223,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "smolith-qualify"
+version = "0.1.0"
+dependencies = [
+ "laputa-async-channel",
+ "laputa-async-executor",
+ "laputa-async-fs",
+ "laputa-async-io",
+ "laputa-async-lock",
+ "laputa-async-net",
+ "laputa-blocking",
+ "laputa-concurrent-queue",
+ "laputa-event-listener",
+ "laputa-futures-lite",
+ "laputa-polling",
+ "laputa-smol",
+ "libc",
+]
+
+[[package]]
 name = "socket2"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

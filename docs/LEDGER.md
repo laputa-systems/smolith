@@ -298,7 +298,7 @@
 | # | Title | Severity | Disposition | Target | Evidence / Notes |
 |:---|:---|:---|:---|:---|:---|
 | [#100](https://github.com/smol-rs/async-lock/issues/100) | Document `RwLockWriteGuard::downgrade()` guarantees | Low | Maintenance / Documentation | Tracked (no action needed in core runtime) | Tracker #100 |
-| [#91](https://github.com/smol-rs/async-lock/issues/91) | RwLock.write() and Mutex.lock() hang forever | Medium | Candidate bug fix | Evaluate in S04-S06 | Tracker #91 |
+| [#91](https://github.com/smol-rs/async-lock/issues/91) | RwLock.write() and Mutex.lock() hang forever | Medium | Not reproduced as a stuck waiter | Left unchanged | `second_mutex_waiter_runs` in `tests/qualify` completes: after the holder drops, the second waiter acquires the mutex. An earlier 2s stall report was not repeated on Darwin arm64. |
 | [#84](https://github.com/smol-rs/async-lock/issues/84) | Sporadic panic in async-io thread with esp-sys-svc async TLS example | High | Not reproduced | Left unchanged | No small Darwin repro. ESP target was not run. |
 | [#65](https://github.com/smol-rs/async-lock/issues/65) | feature request：support cancellable RwLock APIs | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #65 |
 | [#24](https://github.com/smol-rs/async-lock/issues/24) | Support acquire_many (and variants) in Semaphore | Low | Feature / API Enhancement | Deferred (parity before enhancement) | Tracker #24 |

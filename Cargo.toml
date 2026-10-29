@@ -27,6 +27,7 @@ members = [
     "crates/smol",
     "crates/smol-macros",
     "crates/waker-fn",
+    "tests/qualify",
 ]
 
 [workspace.package]

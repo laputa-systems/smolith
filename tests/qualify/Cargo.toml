@@ -1,0 +1,35 @@
+[package]
+name = "smolith-qualify"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+publish = false
+license = "Apache-2.0 OR MIT"
+description = "System qualification for the workspace"
+
+[lib]
+name = "qualify"
+path = "src/lib.rs"
+
+[[bin]]
+name = "baseline"
+path = "src/bin/baseline.rs"
+test = false
+bench = false
+
+[dependencies]
+async-io = { workspace = true }
+async-net = { workspace = true }
+blocking = { workspace = true }
+futures-lite = { workspace = true }
+libc = "0.2"
+
+[dev-dependencies]
+async-channel = { workspace = true }
+async-executor = { workspace = true }
+async-fs = { workspace = true }
+async-lock = { workspace = true }
+concurrent-queue = { workspace = true }
+event-listener = { workspace = true }
+polling = { workspace = true }
+smol = { package = "laputa-smol", version = "0.1.0", path = "../../crates/smol" }
