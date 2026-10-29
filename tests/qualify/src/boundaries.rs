@@ -3,7 +3,8 @@ use std::net::{Shutdown, TcpListener as StdTcpListener, TcpStream as StdTcpStrea
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use std::task::{Context, Wake, Waker};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -39,17 +40,47 @@ fn cancel_parked_task() {
     assert_eq!(leftover.try_recv().unwrap(), 1);
 }
 
+struct AcceptWake(Arc<AtomicBool>);
+
+impl Wake for AcceptWake {
+    fn wake(self: Arc<Self>) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
 #[test]
 fn cancel_accept_then_connect() {
     let _guard = serial();
     within(Duration::from_secs(2), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        drop(listener.accept());
+        let woke = Arc::new(AtomicBool::new(false));
+        let mut accept = std::pin::pin!(listener.accept());
+        let waker = Waker::from(Arc::new(AcceptWake(Arc::clone(&woke))));
+        let mut context = Context::from_waker(&waker);
+        assert!(accept.as_mut().poll(&mut context).is_pending());
+
+        let (release_tx, release_rx) = mpsc::channel();
+        let connector = thread::spawn(move || {
+            let stream = StdTcpStream::connect(addr).unwrap();
+            let _ = release_rx.recv();
+            drop(stream);
+        });
+        let started = Instant::now();
+        while !woke.load(Ordering::Acquire) {
+            if started.elapsed() > Duration::from_secs(1) {
+                panic!("polled accept was not registered");
+            }
+            thread::yield_now();
+        }
+        drop(accept);
+
         let (accepted, connected) =
             future::zip(listener.accept(), TcpStream::connect(addr)).await;
         accepted.unwrap();
         connected.unwrap();
+        let _ = release_tx.send(());
+        connector.join().unwrap();
     });
 }
 
