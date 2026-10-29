@@ -262,11 +262,7 @@ where
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
-                Ok(_) => {
-                    // Update the state because we're continuing with polling the future.
-                    state = (state & !SCHEDULED) | RUNNING;
-                    break;
-                }
+                Ok(_) => break,
                 Err(s) => state = s,
             }
         }
@@ -298,6 +294,8 @@ where
         };
 
         mem::forget(guard);
+
+        state = (*header).state.load(Ordering::Acquire);
 
         match poll {
             Poll::Ready(out) => {

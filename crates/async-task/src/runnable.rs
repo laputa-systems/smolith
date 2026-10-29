@@ -489,8 +489,9 @@ impl<M> Builder<M> {
 
         impl<F> Drop for Checked<F> {
             fn drop(&mut self) {
+                let id = self.id;
                 assert!(
-                    self.id == thread_id(),
+                    id == thread_id(),
                     "local task dropped by a thread that didn't spawn it"
                 );
                 unsafe {
@@ -503,11 +504,14 @@ impl<M> Builder<M> {
             type Output = F::Output;
 
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                assert!(
-                    self.id == thread_id(),
-                    "local task polled by a thread that didn't spawn it"
-                );
-                unsafe { self.map_unchecked_mut(|c| &mut *c.inner).poll(cx) }
+                unsafe {
+                    let me = self.get_unchecked_mut();
+                    assert!(
+                        me.id == thread_id(),
+                        "local task polled by a thread that didn't spawn it"
+                    );
+                    Pin::new_unchecked(&mut *me.inner).poll(cx)
+                }
             }
         }
 
