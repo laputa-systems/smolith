@@ -68,6 +68,8 @@ use std::io;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -746,6 +748,8 @@ impl Poller {
                 if let Err(e) = self.poller.wait_deadline(&mut events.events, deadline) {
                     // If the wait was interrupted by a signal, clear events and try again.
                     if e.kind() == io::ErrorKind::Interrupted {
+                        #[cfg(test)]
+                        INTERRUPT_RECOVERIES.fetch_add(1, Ordering::Relaxed);
                         events.clear();
                         if self.notified.swap(false, Ordering::SeqCst) {
                             self.poller.notify()?;
@@ -1061,6 +1065,12 @@ cfg_if! {
 fn unsupported_error(err: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, err.into())
 }
+
+#[cfg(test)]
+static INTERRUPT_RECOVERIES: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(all(test, unix))]
+mod interrupt;
 
 fn _assert_send_and_sync() {
     fn assert_send<T: Send>() {}
