@@ -1,15 +1,6 @@
 Prefix: SMOL
 Next: 7
 
-### SMOL-1 · P1 · Qualify suite serializes away the concurrency it claims to prove
-
-- **Area:** Tests
-- **Where:** `tests/qualify/src/boundaries.rs:24`, `tests/qualify/src/support.rs:10-25`
-- **Problem:** Every boundary test takes a global `Mutex<()>` via `serial()`, so reactor/poller/executor/mutex/queue paths never overlap in the suite. Recent history is dominated by exactly those races: `1ae3d0a fix(async-executor): schedule tasks outside the active lock`, `18369a8 fix(async-executor): notify runners after publication accounting`, `6fbf85e fix(async-task): keep a task alive through its schedule end hook`. A suite that never runs two lock/wake/schedule paths concurrently cannot fail on the defect class that keeps recurring. `within(2s)` converts hangs into `process::exit(2)` instead of a named assertion.
-- **Recommendation:** Keep 2-3 serial smoke tests; run the lock/wake/schedule/close boundary tests concurrently with a repetition count and deterministic join.
-- **Fix with:** `renovate-tests`
-- **Effort:** M
-
 ### SMOL-2 · P1 · Miri and Loom cover a sliver of the unsafe and lock surface
 
 - **Area:** Tests

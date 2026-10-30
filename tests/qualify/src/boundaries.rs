@@ -19,7 +19,7 @@ use futures_lite::future;
 use futures_lite::prelude::*;
 use polling::{Event as PollEvent, Events, Poller};
 
-use crate::support::{abort_after, within};
+use crate::support::within;
 
 fn serial() -> MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
@@ -28,7 +28,6 @@ fn serial() -> MutexGuard<'static, ()> {
 
 #[test]
 fn cancel_parked_task() {
-    let _guard = serial();
     let ex = Executor::new();
     let (sender, receiver) = bounded::<u8>(1);
     let leftover = receiver.clone();
@@ -50,7 +49,6 @@ impl Wake for AcceptWake {
 
 #[test]
 fn cancel_accept_then_connect() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -86,8 +84,6 @@ fn cancel_accept_then_connect() {
 
 #[test]
 fn wake_during_executor_drop() {
-    let _guard = serial();
-    let _watch = abort_after(Duration::from_secs(10));
     for _ in 0..50 {
         let slot = Arc::new(Mutex::new(None));
         let captured = Arc::clone(&slot);
@@ -99,21 +95,30 @@ fn wake_during_executor_drop() {
         .detach();
         assert!(ex.try_tick());
         let waker = slot.lock().unwrap().take().expect("waker stored");
-        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let barrier = Arc::new(std::sync::Barrier::new(3));
         let thread_barrier = Arc::clone(&barrier);
-        let handle = thread::spawn(move || {
+        let waker_handle = thread::spawn(move || {
             thread_barrier.wait();
             waker.wake();
         });
+        let (done_tx, done_rx) = mpsc::channel();
+        let drop_barrier = Arc::clone(&barrier);
+        thread::spawn(move || {
+            drop_barrier.wait();
+            drop(ex);
+            waker_handle.join().unwrap();
+            let _ = done_tx.send(());
+        });
         barrier.wait();
-        drop(ex);
-        handle.join().unwrap();
+        assert!(
+            done_rx.recv_timeout(Duration::from_secs(10)).is_ok(),
+            "executor drop hung despite racing wake during drop"
+        );
     }
 }
 
 #[test]
 fn readiness_rearms_after_read() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let (reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
         let reader = Async::new(reader).unwrap();
@@ -141,7 +146,6 @@ fn readiness_rearms_after_read() {
 
 #[test]
 fn oneshot_modify_rearms() {
-    let _guard = serial();
     let (reader, mut writer) = std::os::unix::net::UnixStream::pair().unwrap();
     reader.set_nonblocking(true).unwrap();
     writer.set_nonblocking(true).unwrap();
@@ -232,7 +236,6 @@ fn notify_stays_blocked_until_timeout() {
 #[cfg(unix)]
 #[test]
 fn sigusr2_wakes_poller() {
-    let _guard = serial();
     let _restore = install_noop_sigusr2();
     for iteration in 0..10 {
         let poller = Arc::new(Poller::new().unwrap());
@@ -262,7 +265,6 @@ fn sigusr2_wakes_poller() {
 
 #[test]
 fn reused_descriptor_is_not_watched() {
-    let _guard = serial();
     let poller = Poller::new().unwrap();
     let listener = StdTcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
@@ -304,7 +306,6 @@ fn reused_descriptor_is_not_watched() {
 
 #[test]
 fn reused_async_listener_is_not_readable() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let listener = Async::<StdTcpListener>::bind(([127, 0, 0, 1], 0)).unwrap();
         let fd = std::os::unix::io::AsRawFd::as_raw_fd(&listener);
@@ -339,7 +340,6 @@ fn reused_async_listener_is_not_readable() {
 
 #[test]
 fn tcp_shutdown_returns_eof() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -359,7 +359,6 @@ fn tcp_shutdown_returns_eof() {
 
 #[test]
 fn channel_close_wakes_receiver() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let (sender, receiver) = bounded::<u8>(1);
         thread::spawn(move || {
@@ -372,7 +371,6 @@ fn channel_close_wakes_receiver() {
 
 #[test]
 fn drop_socket_leaves_reactor_usable() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let socket = async_net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         drop(socket);
@@ -382,7 +380,6 @@ fn drop_socket_leaves_reactor_usable() {
 
 #[test]
 fn fs_remove_then_read_fails() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.work/tmp/qualify-close");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -396,7 +393,6 @@ fn fs_remove_then_read_fails() {
 
 #[test]
 fn bounded_send_waits_until_recv() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let (sender, receiver) = bounded(1);
         sender.send(1u8).await.unwrap();
@@ -410,7 +406,6 @@ fn bounded_send_waits_until_recv() {
 
 #[test]
 fn blocking_pool_queues_past_the_thread_limit() {
-    let _guard = serial();
     let _restore = RestorePool;
     blocking::set_max_blocking_threads(NonZeroUsize::new(1).unwrap());
     within(Duration::from_secs(2), async {
@@ -432,7 +427,6 @@ fn blocking_pool_queues_past_the_thread_limit() {
 
 #[test]
 fn second_mutex_waiter_runs() {
-    let _guard = serial();
     let ex = Executor::new();
     let mutex = Arc::new(AsyncMutex::new(0u8));
     let hold = mutex.try_lock().expect("mutex was free");
@@ -458,7 +452,6 @@ fn second_mutex_waiter_runs() {
 
 #[test]
 fn close_survives_force_push() {
-    let _guard = serial();
     const TRIALS: usize = 1_000;
     let mut reopens = 0;
     for trial in 0..TRIALS {
@@ -487,7 +480,6 @@ fn close_survives_force_push() {
 
 #[test]
 fn dropped_listener_does_not_consume_notify() {
-    let _guard = serial();
     within(Duration::from_secs(2), async {
         let event = Arc::new(Event::new());
         drop(event.listen());
@@ -503,10 +495,114 @@ fn dropped_listener_does_not_consume_notify() {
 
 #[test]
 fn facade_spawn_completes() {
-    let _guard = serial();
     let task = smol::spawn(async { 7u8 });
     let value = within(Duration::from_secs(2), task);
     assert_eq!(value, 7);
+}
+
+#[test]
+fn concurrent_boundaries_overlap() {
+    const TRIALS: usize = 50;
+    const LIMIT: Duration = Duration::from_secs(20);
+    let start = Instant::now();
+    let gate = Arc::new(std::sync::Barrier::new(4));
+    thread::scope(|scope| {
+        let lane = Arc::clone(&gate);
+        scope.spawn(move || {
+            lane.wait();
+            for _ in 0..TRIALS {
+                let ex = Executor::new();
+                let (sender, receiver) = bounded::<u8>(1);
+                let leftover = receiver.clone();
+                let task = ex.spawn(async move { receiver.recv().await.ok() });
+                assert!(ex.try_tick(), "overlap spawn/cancel: parked recv did not run");
+                let outcome = within(Duration::from_secs(2), ex.run(task.cancel()));
+                assert_eq!(outcome, None, "overlap spawn/cancel: cancel lost the parked task");
+                sender.try_send(1).unwrap();
+                assert_eq!(
+                    leftover.try_recv().unwrap(),
+                    1,
+                    "overlap spawn/cancel: channel unusable after cancel"
+                );
+            }
+        });
+        let lane = Arc::clone(&gate);
+        scope.spawn(move || {
+            lane.wait();
+            for _ in 0..TRIALS {
+                let ex = Executor::new();
+                let mutex = Arc::new(AsyncMutex::new(0u8));
+                let hold = mutex.try_lock().expect("overlap mutex: mutex was free");
+                let first_mutex = Arc::clone(&mutex);
+                let second_mutex = Arc::clone(&mutex);
+                let first = ex.spawn(async move {
+                    *first_mutex.lock().await = 1;
+                });
+                let second = ex.spawn(async move {
+                    *second_mutex.lock().await = 2;
+                });
+                assert!(ex.try_tick(), "overlap mutex: first waiter did not run");
+                assert!(ex.try_tick(), "overlap mutex: second waiter did not run");
+                drop(hold);
+                let ex = Arc::new(ex);
+                let driver = Arc::clone(&ex);
+                within(Duration::from_secs(2), driver.run(async move {
+                    first.await;
+                    second.await;
+                }));
+                assert_eq!(
+                    *mutex.try_lock().expect("overlap mutex: mutex still held"),
+                    2,
+                    "overlap mutex: second waiter did not run last"
+                );
+            }
+        });
+        let lane = Arc::clone(&gate);
+        scope.spawn(move || {
+            lane.wait();
+            let mut reopens = 0;
+            for _ in 0..TRIALS {
+                let queue = ConcurrentQueue::bounded(2);
+                let stop = AtomicBool::new(false);
+                thread::scope(|inner| {
+                    inner.spawn(|| {
+                        let mut n = 0u32;
+                        while !stop.load(Ordering::Relaxed) && queue.force_push(n).is_ok() {
+                            n = n.wrapping_add(1);
+                        }
+                    });
+                    while queue.pop().is_err() {}
+                    queue.close();
+                    stop.store(true, Ordering::Relaxed);
+                });
+                if !queue.is_closed() {
+                    reopens += 1;
+                }
+            }
+            assert_eq!(reopens, 0, "overlap queue: close reopened under force_push");
+        });
+        let lane = Arc::clone(&gate);
+        scope.spawn(move || {
+            lane.wait();
+            for _ in 0..TRIALS {
+                let ex = Executor::new();
+                let (sender, receiver) = bounded::<u8>(1);
+                let task = ex.spawn(async move { receiver.recv().await });
+                assert!(ex.try_tick(), "overlap channel: recv did not park");
+                sender.close();
+                let outcome = within(Duration::from_secs(2), ex.run(task));
+                assert!(
+                    outcome.is_err(),
+                    "overlap channel: closed channel returned a value"
+                );
+            }
+        });
+    });
+    assert!(
+        start.elapsed() < LIMIT,
+        "overlap lanes took {:?}, expected under {LIMIT:?}",
+        start.elapsed()
+    );
 }
 
 struct RestorePool;
