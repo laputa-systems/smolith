@@ -30,7 +30,7 @@ SCRIPT_DIR=$(CDPATH= cd -P "$(dirname "$0")" && pwd -P) || fail "cannot locate s
 ROOT=$(CDPATH= cd -P "$SCRIPT_DIR/.." && pwd -P) || fail "cannot locate repository root"
 cd "$ROOT"
 
-for command_name in awk cargo cp dirname git grep mkdir mv rm sed sort; do
+for command_name in awk cargo cp dirname git grep mkdir mv python3 rm sed sort; do
     command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
 
@@ -95,62 +95,6 @@ on_exit() {
 
 trap 'on_exit $?' 0
 trap 'exit 1' HUP INT TERM
-
-read_package_name() {
-    awk '
-        /^[ \t]*\[package\][ \t]*(#.*)?$/ { section = "package"; next }
-        /^[ \t]*\[/ { section = ""; next }
-        section == "package" {
-            line = $0
-            sub(/^[ \t]*/, "", line)
-            key = line
-            sub(/[ \t]*=.*/, "", key)
-            if (key != "name") next
-
-            value = line
-            sub(/^[^=]*=[ \t]*/, "", value)
-            name_count++
-            if (value !~ /^"laputa-[-A-Za-z0-9_]+"([ \t]*#.*)?$/) invalid = 1
-            sub(/^"/, "", value)
-            sub(/".*/, "", value)
-            package_name = value
-        }
-        END {
-            if (invalid || name_count != 1) exit 1
-            print package_name
-        }
-    ' "$1"
-}
-
-read_workspace_version() {
-    awk '
-        /^[ \t]*\[workspace\.package\][ \t]*$/ { section = "package"; next }
-        /^[ \t]*\[/ { section = ""; next }
-        section == "package" {
-            line = $0
-            sub(/^[ \t]*/, "", line)
-            key = line
-            sub(/[ \t]*=.*/, "", key)
-            if (key != "version") next
-
-            value = line
-            sub(/^[^=]*=[ \t]*/, "", value)
-            version_count++
-            if (value !~ /^"(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?"([ \t]*#.*)?$/) invalid = 1
-            sub(/^"/, "", value)
-            sub(/".*/, "", value)
-            package_version = value
-        }
-        END {
-            if (invalid || version_count != 1) exit 1
-            print package_version
-        }
-    ' "$1"
-}
-
-map_get() {
-    printf '%s\n' "$1" | awk -v key="$2" -F= '$1 == key { print substr($0, length($1) + 2); found = 1; exit } END { exit !found }'
-}
 
 registry_latest() {
     # Prints the latest registry version of $1, or nothing when the crate
@@ -309,131 +253,11 @@ ensure_registry_auth
 # up without editing this script. Members with publish = false stay in the
 # workspace but leave the release: they are never queried, tagged, or
 # published.
-member_dirs=$(awk '
-    /^[ \t]*\[workspace\][ \t]*$/ { section = "workspace"; next }
-    /^[ \t]*\[/ { section = ""; next }
-    section == "workspace" {
-        line = $0
-        if (!capturing) {
-            if (line !~ /^[ \t]*members[ \t]*=[ \t]*\[/) next
-            capturing = 1
-            sub(/^[^[]*\[/, "", line)
-        }
-        rest = line
-        while (match(rest, /"[^"]*"/)) {
-            print substr(rest, RSTART + 1, RLENGTH - 2)
-            rest = substr(rest, RSTART + RLENGTH)
-        }
-        if (line ~ /\]/) capturing = 0
-    }
-' Cargo.toml) || fail "could not read workspace members"
-[ -n "$member_dirs" ] || fail "workspace has no members"
-
-LOCAL_VERSION=$(read_workspace_version Cargo.toml) || fail "expected one semantic version in [workspace.package] of Cargo.toml"
-[ -n "$LOCAL_VERSION" ] || fail "workspace version is empty"
-
-MANIFEST_MAP=
-PKG_SPACE=
-for dir in $member_dirs; do
-    case "$dir" in
-        *[!A-Za-z0-9_./-]* | '') fail "unsupported member path: $dir" ;;
-    esac
-    file=$dir/Cargo.toml
-    [ -f "$file" ] || fail "workspace member has no manifest: $file"
-    if grep -q '^[[:space:]]*publish[[:space:]]*=[[:space:]]*false' "$file"; then
-        continue
-    fi
-    name=$(read_package_name "$file") || fail "expected a laputa-* [package] name in $file"
-    [ -n "$name" ] || fail "package name is empty in $file"
-    MANIFEST_MAP="${MANIFEST_MAP}${MANIFEST_MAP:+$newline}$name:$file"
-    PKG_SPACE="${PKG_SPACE}${PKG_SPACE:+ }$name"
-done
+LOCAL_VERSION=$(python3 tools/release_graph.py version) || fail "could not read release version"
+MANIFEST_MAP=$(python3 tools/release_graph.py manifests) || fail "could not read release manifests"
+PKG_SPACE=$(printf '%s\n' "$MANIFEST_MAP" | awk -F: '{ print $1 }' | tr '\n' ' ')
 [ -n "$PKG_SPACE" ] || fail "workspace has no publishable members"
-printf '%s\n' "$MANIFEST_MAP" | awk -F: '{ if ($1 in seen) duplicated = 1; seen[$1] = 1 } END { exit duplicated }' \
-    || fail "duplicate package names in workspace manifests"
-
-manifest_for() {
-    printf '%s\n' "$MANIFEST_MAP" | awk -v name="$1" -F: '$1 == name { print substr($0, length($1) + 2); found = 1; exit } END { exit !found }'
-}
-
-# Map each workspace dependency key to its laputa-* package so inherited
-# edges (async-io = { workspace = true }) resolve to publishable names.
-SHORT_TO_PACKAGE=$(awk '
-    /^[ \t]*\[workspace\.dependencies\][ \t]*$/ { section = "deps"; next }
-    /^[ \t]*\[/ { section = ""; next }
-    section == "deps" {
-        line = $0
-        stripped = line
-        sub(/^[ \t]*/, "", stripped)
-        if (stripped ~ /^#/) next
-        key = stripped
-        sub(/[ \t]*=.*/, "", key)
-        if (key !~ /^[A-Za-z0-9_-]+$/) next
-        if (line ~ /package[ \t]*=[ \t]*"laputa-[-A-Za-z0-9_]+"/) {
-            pkg = line
-            sub(/.*package[ \t]*=[ \t]*"/, "", pkg)
-            sub(/".*/, "", pkg)
-            print key "=" pkg
-        }
-    }
-' Cargo.toml) || fail "could not read workspace dependencies"
-[ -n "$SHORT_TO_PACKAGE" ] || fail "workspace has no laputa-* dependencies"
-
-short_to_package() {
-    map_get "$SHORT_TO_PACKAGE" "$1"
-}
-
-# Derive inter-crate edges from normal and build dependencies only.
-# Dev-dependencies never gate publishing: laputa-smol and laputa-async-dup
-# depend on each other for tests, which would otherwise read as a cycle.
-# A laputa-* package named directly in a normal or build section must use
-# workspace inheritance; anything else fails loudly before anything is edited.
-EDGES=
-for name in $PKG_SPACE; do
-    file=$(manifest_for "$name") || fail "no manifest for $name"
-    if grep -q 'package *= *"laputa-' "$file"; then
-        kinds=$(awk '
-            /^[ \t]*\[/ {
-                header = $0
-                if (header ~ /dev-dependencies/) kind = "dev"
-                else if (header ~ /build-dependencies/) kind = "build"
-                else if (header ~ /dependencies/) kind = "normal"
-                else kind = ""
-                next
-            }
-            kind == "normal" || kind == "build" { print }
-        ' "$file")
-        if printf '%s\n' "$kinds" | grep -q 'package *= *"laputa-'; then
-            fail "direct laputa-* package dependency in normal or build section of $file is not supported; use workspace inheritance"
-        fi
-    fi
-    deps=$(awk '
-        /^[ \t]*\[/ {
-            header = $0
-            if (header ~ /dev-dependencies/) kind = "dev"
-            else if (header ~ /build-dependencies/) kind = "build"
-            else if (header ~ /dependencies/) kind = "normal"
-            else kind = ""
-            next
-        }
-        (kind == "normal" || kind == "build") {
-            line = $0
-            sub(/^[ \t]*/, "", line)
-            if (line ~ /^#/) next
-            key = line
-            sub(/[ \t]*=.*/, "", key)
-            if (key ~ /^[A-Za-z0-9_-]+$/) print key
-        }
-    ' "$file") || fail "could not read dependencies of $file"
-    for dep in $deps; do
-        pkg=$(short_to_package "$dep" 2>/dev/null) || continue
-        [ "$pkg" = "$name" ] && continue
-        case " $PKG_SPACE " in
-            *" $pkg "*) EDGES="${EDGES}${EDGES:+$newline}$name $pkg" ;;
-        esac
-    done
-done
-EDGES=$(printf '%s\n' "$EDGES" | sort -u)
+EDGES=$(python3 tools/release_graph.py edges) || fail "could not read release dependencies"
 
 # Order crates dependencies-first. Emitted in sorted order among ready
 # crates so the sequence is stable.
@@ -512,11 +336,9 @@ LEAVES=$(printf '%s\n' "$EDGES" | awk -v nodes="$PKG_SPACE" '
 # after each version query fails fast on a dead token instead of running
 # every query first. Cargo output is captured so successful checks stay
 # silent; failures report it.
-PUBLISHED=
 MAX_PUBLISHED=
 for name in $PKG_SPACE; do
     latest=$(registry_latest "$name")
-    PUBLISHED="${PUBLISHED}${PUBLISHED:+$newline}$name=$latest"
     if [ -n "$latest" ]; then
         owner_output=$(cargo owner --list "$name" 2>&1) || fail "could not verify ownership of $name: $owner_output"
         if [ -z "$MAX_PUBLISHED" ]; then
