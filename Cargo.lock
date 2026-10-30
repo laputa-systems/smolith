@@ -1713,9 +1713,9 @@ dependencies = [
  "futures-core",
  "futures-util",
  "laputa-easy-parallel",
- "laputa-event-listener 0.2.0",
- "laputa-event-listener-strategy 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-event-listener",
+ "laputa-event-listener-strategy",
+ "laputa-futures-lite",
  "pin-project-lite",
 ]
 
@@ -1724,26 +1724,14 @@ name = "laputa-async-channel"
 version = "0.2.0"
 dependencies = [
  "futures-core",
- "laputa-concurrent-queue 0.2.0",
+ "laputa-concurrent-queue",
  "laputa-easy-parallel",
- "laputa-event-listener-strategy 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-event-listener-strategy",
+ "laputa-futures-lite",
  "pin-project-lite",
  "portable-atomic",
  "portable-atomic-util",
  "wasm-bindgen-test",
-]
-
-[[package]]
-name = "laputa-async-channel"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7bc87267f27aaf695b7013b1390072d53a5e80b8be45cd9832a796f03d8459d"
-dependencies = [
- "futures-core",
- "laputa-concurrent-queue 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-event-listener-strategy 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project-lite",
 ]
 
 [[package]]
@@ -1752,8 +1740,8 @@ version = "0.2.0"
 dependencies = [
  "futures",
  "futures-io",
- "laputa-async-lock 0.2.0",
- "laputa-smol 0.2.0",
+ "laputa-async-lock",
+ "laputa-smol",
 ]
 
 [[package]]
@@ -1761,52 +1749,27 @@ name = "laputa-async-executor"
 version = "0.2.0"
 dependencies = [
  "criterion 0.8.2",
- "laputa-async-channel 0.2.0",
- "laputa-async-io 0.2.0",
- "laputa-async-lock 0.2.0",
- "laputa-async-task 0.2.0",
- "laputa-concurrent-queue 0.2.0",
+ "laputa-async-channel",
+ "laputa-async-io",
+ "laputa-async-lock",
+ "laputa-async-task",
+ "laputa-concurrent-queue",
  "laputa-easy-parallel",
- "laputa-fastrand 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-fastrand",
+ "laputa-futures-lite",
  "once_cell",
  "pin-project-lite",
  "slab",
 ]
 
 [[package]]
-name = "laputa-async-executor"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6af4b67c29363e82089a5627288088f1524b1039dbcfdb04af54f0bda6183fbc"
-dependencies = [
- "laputa-async-task 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-concurrent-queue 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-fastrand 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-futures-lite 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project-lite",
- "slab",
-]
-
-[[package]]
 name = "laputa-async-fs"
 version = "0.2.0"
 dependencies = [
- "laputa-async-lock 0.2.0",
- "laputa-blocking 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-async-lock",
+ "laputa-blocking",
+ "laputa-futures-lite",
  "libc",
-]
-
-[[package]]
-name = "laputa-async-fs"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f20743094507bd6e9dd3b7e66c6c5b0f9612934ae3c00b3b3900b81087a3419"
-dependencies = [
- "laputa-async-lock 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-blocking 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-futures-lite 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1819,13 +1782,13 @@ dependencies = [
  "futures-io",
  "getrandom 0.3.4",
  "inotify",
- "laputa-async-channel 0.2.0",
- "laputa-async-net 0.2.0",
- "laputa-blocking 0.2.0",
- "laputa-concurrent-queue 0.2.0",
- "laputa-futures-lite 0.2.0",
- "laputa-parking 0.2.0",
- "laputa-polling 0.2.0",
+ "laputa-async-channel",
+ "laputa-async-net",
+ "laputa-blocking",
+ "laputa-concurrent-queue",
+ "laputa-futures-lite",
+ "laputa-parking",
+ "laputa-polling",
  "rustix 1.1.6",
  "signal-hook 0.3.18",
  "slab",
@@ -1835,31 +1798,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "laputa-async-io"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d75f2ace1bbee94c67a9c1e022acf4162e1df1e282e719193c3d570c386fe9d"
-dependencies = [
- "autocfg",
- "cfg-if",
- "futures-io",
- "laputa-concurrent-queue 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-futures-lite 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-parking 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-polling 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustix 1.1.6",
- "slab",
-]
-
-[[package]]
 name = "laputa-async-lock"
 version = "0.2.0"
 dependencies = [
  "flume",
- "laputa-event-listener 0.2.0",
- "laputa-event-listener-strategy 0.2.0",
- "laputa-fastrand 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-event-listener",
+ "laputa-event-listener-strategy",
+ "laputa-fastrand",
+ "laputa-futures-lite",
  "laputa-waker-fn",
  "loom",
  "pin-project-lite",
@@ -1867,34 +1813,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "laputa-async-lock"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51c243f86d1569b71131e0ad7976a5a3a1cedadd90f08a6e77d5f1d604601646"
-dependencies = [
- "laputa-event-listener 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-event-listener-strategy 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project-lite",
-]
-
-[[package]]
 name = "laputa-async-net"
 version = "0.2.0"
 dependencies = [
- "laputa-async-io 0.2.0",
- "laputa-blocking 0.2.0",
- "laputa-futures-lite 0.2.0",
-]
-
-[[package]]
-name = "laputa-async-net"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff8615a0acdad7b93b0ffa6e8d3bb622a64b28bfc77414200d06440a8b48a2d"
-dependencies = [
- "laputa-async-io 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-blocking 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-futures-lite 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "laputa-async-io",
+ "laputa-blocking",
+ "laputa-futures-lite",
 ]
 
 [[package]]
@@ -1902,60 +1826,30 @@ name = "laputa-async-process"
 version = "0.2.0"
 dependencies = [
  "cfg-if",
- "laputa-async-channel 0.2.0",
- "laputa-async-executor 0.2.0",
- "laputa-async-io 0.2.0",
- "laputa-async-lock 0.2.0",
- "laputa-async-signal 0.2.0",
- "laputa-async-task 0.2.0",
- "laputa-event-listener 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-async-channel",
+ "laputa-async-executor",
+ "laputa-async-io",
+ "laputa-async-lock",
+ "laputa-async-signal",
+ "laputa-async-task",
+ "laputa-event-listener",
+ "laputa-futures-lite",
  "rustix 1.1.6",
  "tracing",
 ]
 
 [[package]]
-name = "laputa-async-process"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9f335b2ec28100b562f12d06fd21fcbdd1e1ad4e0c9a7ec34efadda77d0d6e3"
-dependencies = [
- "cfg-if",
- "laputa-async-channel 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-io 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-lock 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-signal 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-task 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-event-listener 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-futures-lite 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustix 1.1.6",
-]
-
-[[package]]
 name = "laputa-async-signal"
 version = "0.2.0"
 dependencies = [
  "futures-core",
  "futures-io",
- "laputa-async-io 0.2.0",
- "laputa-fastrand 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-async-io",
+ "laputa-fastrand",
+ "laputa-futures-lite",
  "libc",
  "rustix 1.1.6",
  "signal-hook 0.4.5",
- "signal-hook-registry",
-]
-
-[[package]]
-name = "laputa-async-signal"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed137a9c1f77852a99d163ef245171276bebed1a1feb63e138dd40c58d471880"
-dependencies = [
- "futures-core",
- "futures-io",
- "laputa-async-io 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustix 1.1.6",
  "signal-hook-registry",
 ]
 
@@ -1965,20 +1859,14 @@ version = "0.2.0"
 dependencies = [
  "flaky_test",
  "flume",
- "laputa-atomic-waker 0.2.0",
+ "laputa-atomic-waker",
  "laputa-easy-parallel",
- "laputa-futures-lite 0.2.0",
- "laputa-smol 0.2.0",
+ "laputa-futures-lite",
+ "laputa-smol",
  "once_cell",
  "pin-project-lite",
  "portable-atomic",
 ]
-
-[[package]]
-name = "laputa-async-task"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8479caeebd96f813f14bcfd847b020d92af1a7062fdf8f1a656ac36208b1ee40"
 
 [[package]]
 name = "laputa-atomic-waker"
@@ -1991,34 +1879,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "laputa-atomic-waker"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42f43a967276368758cda7890ed49d86644c6bb15a38ef076a994c01919c519d"
-
-[[package]]
 name = "laputa-blocking"
 version = "0.2.0"
 dependencies = [
  "futures-io",
- "laputa-async-channel 0.2.0",
- "laputa-async-task 0.2.0",
- "laputa-futures-lite 0.2.0",
- "laputa-piper 0.2.0",
+ "laputa-async-channel",
+ "laputa-async-task",
+ "laputa-futures-lite",
+ "laputa-piper",
  "tracing",
-]
-
-[[package]]
-name = "laputa-blocking"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b5307f6ef191b21327f88e5521ff7828d041f6f174f48efa447e663a593d690"
-dependencies = [
- "futures-io",
- "laputa-async-channel 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-task 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-futures-lite 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-piper 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2028,19 +1897,10 @@ dependencies = [
  "criterion 0.8.2",
  "crossbeam-utils",
  "laputa-easy-parallel",
- "laputa-fastrand 0.2.0",
+ "laputa-fastrand",
  "loom",
  "portable-atomic",
  "wasm-bindgen-test",
-]
-
-[[package]]
-name = "laputa-concurrent-queue"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6179d1dbd7c258003759a22b0dd88beb29d25bd2e2217aff122aabb13e90e0f1"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -2053,8 +1913,8 @@ version = "0.2.0"
 dependencies = [
  "criterion 0.8.2",
  "critical-section",
- "laputa-futures-lite 0.2.0",
- "laputa-parking 0.2.0",
+ "laputa-futures-lite",
+ "laputa-parking",
  "laputa-waker-fn",
  "loom",
  "pin-project-lite",
@@ -2065,33 +1925,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "laputa-event-listener"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd9bb0caa65a5116e23368cea5866c76b062fb5daea22f190d1f9e53d5f37293"
-dependencies = [
- "laputa-parking 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project-lite",
-]
-
-[[package]]
 name = "laputa-event-listener-strategy"
 version = "0.2.0"
 dependencies = [
- "laputa-event-listener 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-event-listener",
+ "laputa-futures-lite",
  "pin-project-lite",
  "wasm-bindgen-test",
-]
-
-[[package]]
-name = "laputa-event-listener-strategy"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f50148883ff09499035129dd532c044c6b4c4f20046a743045f30d2aebaf919"
-dependencies = [
- "laputa-event-listener 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project-lite",
 ]
 
 [[package]]
@@ -2105,16 +1945,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "laputa-fastrand"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ba00eb2c80112de18ae40685855ef7dcf4d557f3090e04db849494b42f7cd2c"
-
-[[package]]
 name = "laputa-fastrand-contrib"
 version = "0.2.0"
 dependencies = [
- "laputa-fastrand 0.2.0",
+ "laputa-fastrand",
  "libm",
 ]
 
@@ -2124,25 +1958,12 @@ version = "0.2.0"
 dependencies = [
  "futures-core",
  "futures-io",
- "laputa-fastrand 0.2.0",
- "laputa-parking 0.2.0",
+ "laputa-fastrand",
+ "laputa-parking",
  "laputa-waker-fn",
  "memchr",
  "pin-project-lite",
  "spin_on",
-]
-
-[[package]]
-name = "laputa-futures-lite"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d52309f459dd10b9032709acd9114d0a1eb9f4affc5db78a1d04e5a81962869"
-dependencies = [
- "futures-core",
- "futures-io",
- "laputa-fastrand 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-parking 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project-lite",
 ]
 
 [[package]]
@@ -2154,63 +1975,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "laputa-parking"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3b4ca69cac5ee40105f5eed67e28b0a71fa644d0ca50d3f48a38d3ad251eaf4"
-
-[[package]]
 name = "laputa-piper"
 version = "0.2.0"
 dependencies = [
  "criterion 0.8.2",
  "futures-io",
- "laputa-async-channel 0.2.0",
- "laputa-async-executor 0.2.0",
- "laputa-async-io 0.2.0",
- "laputa-atomic-waker 0.2.0",
+ "laputa-async-channel",
+ "laputa-async-executor",
+ "laputa-async-io",
+ "laputa-atomic-waker",
  "laputa-easy-parallel",
- "laputa-fastrand 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-fastrand",
+ "laputa-futures-lite",
  "portable-atomic",
  "portable-atomic-util",
 ]
 
 [[package]]
-name = "laputa-piper"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e53f1ca64d433d8d406fa30d7bea5f680855b8d059204cade6f005dc0103740b"
-dependencies = [
- "futures-io",
- "laputa-atomic-waker 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-fastrand 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "laputa-polling"
 version = "0.2.0"
 dependencies = [
  "cfg-if",
  "hermit-abi 0.5.3",
  "laputa-easy-parallel",
- "laputa-fastrand 0.2.0",
+ "laputa-fastrand",
  "libc",
  "rustix 1.1.6",
  "signal-hook 0.4.5",
  "socket2 0.6.5",
  "tracing",
-]
-
-[[package]]
-name = "laputa-polling"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2440e757e6bd7e3b8ddc23fced61395f698a001a76fde0ccecd2d1f73369beeb"
-dependencies = [
- "cfg-if",
- "hermit-abi 0.5.3",
- "rustix 1.1.6",
 ]
 
 [[package]]
@@ -2229,16 +2022,16 @@ dependencies = [
  "http-types",
  "hyper",
  "inotify",
- "laputa-async-channel 0.2.0",
+ "laputa-async-channel",
  "laputa-async-dup",
- "laputa-async-executor 0.2.0",
- "laputa-async-fs 0.2.0",
- "laputa-async-io 0.2.0",
- "laputa-async-lock 0.2.0",
- "laputa-async-net 0.2.0",
- "laputa-async-process 0.2.0",
- "laputa-blocking 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-async-executor",
+ "laputa-async-fs",
+ "laputa-async-io",
+ "laputa-async-lock",
+ "laputa-async-net",
+ "laputa-async-process",
+ "laputa-blocking",
+ "laputa-futures-lite",
  "laputa-smol-macros",
  "macro_rules_attribute",
  "native-tls",
@@ -2253,31 +2046,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "laputa-smol"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a8de4a481764ebf5d0dc1b0a541aedfbf0ab1b4ff2ae4f29dcb087fa8dc37d4"
-dependencies = [
- "laputa-async-channel 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-executor 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-fs 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-io 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-lock 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-net 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-async-process 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-blocking 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "laputa-futures-lite 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "laputa-smol-macros"
 version = "0.2.0"
 dependencies = [
- "laputa-async-executor 0.2.0",
- "laputa-async-io 0.2.0",
- "laputa-async-lock 0.2.0",
- "laputa-event-listener 0.2.0",
- "laputa-futures-lite 0.2.0",
+ "laputa-async-executor",
+ "laputa-async-io",
+ "laputa-async-lock",
+ "laputa-event-listener",
+ "laputa-futures-lite",
  "macro_rules_attribute",
 ]
 
@@ -3427,18 +3203,18 @@ dependencies = [
 name = "smolith-qualify"
 version = "0.2.0"
 dependencies = [
- "laputa-async-channel 0.2.0",
- "laputa-async-executor 0.2.0",
- "laputa-async-fs 0.2.0",
- "laputa-async-io 0.2.0",
- "laputa-async-lock 0.2.0",
- "laputa-async-net 0.2.0",
- "laputa-blocking 0.2.0",
- "laputa-concurrent-queue 0.2.0",
- "laputa-event-listener 0.2.0",
- "laputa-futures-lite 0.2.0",
- "laputa-polling 0.2.0",
- "laputa-smol 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "laputa-async-channel",
+ "laputa-async-executor",
+ "laputa-async-fs",
+ "laputa-async-io",
+ "laputa-async-lock",
+ "laputa-async-net",
+ "laputa-blocking",
+ "laputa-concurrent-queue",
+ "laputa-event-listener",
+ "laputa-futures-lite",
+ "laputa-polling",
+ "laputa-smol",
  "libc",
 ]
 
