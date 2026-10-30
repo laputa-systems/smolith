@@ -1706,7 +1706,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-broadcast"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion 0.3.6",
  "doc-comment",
@@ -1721,7 +1721,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-channel"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-core",
  "laputa-concurrent-queue",
@@ -1736,7 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-dup"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures",
  "futures-io",
@@ -1746,7 +1746,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-executor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion 0.8.2",
  "laputa-async-channel",
@@ -1764,7 +1764,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-fs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-lock",
  "laputa-blocking",
@@ -1774,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-io"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "autocfg",
  "cfg-if",
@@ -1799,7 +1799,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-lock"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "flume",
  "laputa-event-listener",
@@ -1814,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-net"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-io",
  "laputa-blocking",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-process"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cfg-if",
  "laputa-async-channel",
@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-signal"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-core",
  "futures-io",
@@ -1855,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-task"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "flaky_test",
  "flume",
@@ -1870,7 +1870,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-atomic-waker"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion 0.8.2",
  "futures",
@@ -1880,7 +1880,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-blocking"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-io",
  "laputa-async-channel",
@@ -1892,7 +1892,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-concurrent-queue"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion 0.8.2",
  "crossbeam-utils",
@@ -1905,11 +1905,11 @@ dependencies = [
 
 [[package]]
 name = "laputa-easy-parallel"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "laputa-event-listener"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion 0.8.2",
  "critical-section",
@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-event-listener-strategy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-event-listener",
  "laputa-futures-lite",
@@ -1936,7 +1936,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-fastrand"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.4.3",
  "rand 0.10.3",
@@ -1946,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-fastrand-contrib"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-fastrand",
  "libm",
@@ -1954,7 +1954,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-futures-lite"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-core",
  "futures-io",
@@ -1968,7 +1968,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-parking"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-easy-parallel",
  "loom",
@@ -1976,7 +1976,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-piper"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion 0.8.2",
  "futures-io",
@@ -1993,7 +1993,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-polling"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cfg-if",
  "hermit-abi 0.5.3",
@@ -2008,7 +2008,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-smol"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-h1",
@@ -2047,7 +2047,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-smol-macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-executor",
  "laputa-async-io",
@@ -2059,7 +2059,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-waker-fn"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "portable-atomic-util",
 ]
@@ -3201,7 +3201,7 @@ dependencies = [
 
 [[package]]
 name = "smolith-qualify"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-channel",
  "laputa-async-executor",

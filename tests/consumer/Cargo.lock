@@ -56,7 +56,7 @@ checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "laputa-async-channel"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-core",
  "laputa-concurrent-queue",
@@ -66,7 +66,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-executor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-task",
  "laputa-concurrent-queue",
@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-fs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-lock",
  "laputa-blocking",
@@ -87,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-io"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "autocfg",
  "cfg-if",
@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-lock"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-event-listener",
  "laputa-event-listener-strategy",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-net"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-io",
  "laputa-blocking",
@@ -120,7 +120,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-process"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cfg-if",
  "laputa-async-channel",
@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-signal"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-core",
  "futures-io",
@@ -146,15 +146,15 @@ dependencies = [
 
 [[package]]
 name = "laputa-async-task"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "laputa-atomic-waker"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "laputa-blocking"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-io",
  "laputa-async-channel",
@@ -165,14 +165,14 @@ dependencies = [
 
 [[package]]
 name = "laputa-concurrent-queue"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "crossbeam-utils",
 ]
 
 [[package]]
 name = "laputa-event-listener"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-parking",
  "pin-project-lite",
@@ -180,7 +180,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-event-listener-strategy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-event-listener",
  "pin-project-lite",
@@ -188,11 +188,11 @@ dependencies = [
 
 [[package]]
 name = "laputa-fastrand"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "laputa-futures-lite"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-core",
  "futures-io",
@@ -203,11 +203,11 @@ dependencies = [
 
 [[package]]
 name = "laputa-parking"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "laputa-piper"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-io",
  "laputa-atomic-waker",
@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-polling"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cfg-if",
  "hermit-abi",
@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "laputa-smol"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "laputa-async-channel",
  "laputa-async-executor",

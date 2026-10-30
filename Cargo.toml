@@ -31,26 +31,26 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 rust-version = "1.85"
 
 [workspace.dependencies]
-async-channel = { package = "laputa-async-channel", version = "0.2.0", path = "crates/async-channel" }
-async-executor = { package = "laputa-async-executor", version = "0.2.0", path = "crates/async-executor" }
-async-fs = { package = "laputa-async-fs", version = "0.2.0", path = "crates/async-fs" }
-async-io = { package = "laputa-async-io", version = "0.2.0", path = "crates/async-io" }
-async-lock = { package = "laputa-async-lock", version = "0.2.0", path = "crates/async-lock" }
-async-net = { package = "laputa-async-net", version = "0.2.0", path = "crates/async-net" }
-async-process = { package = "laputa-async-process", version = "0.2.0", path = "crates/async-process" }
-async-signal = { package = "laputa-async-signal", version = "0.2.0", path = "crates/async-signal" }
-async-task = { package = "laputa-async-task", version = "0.2.0", path = "crates/async-task" }
-atomic-waker = { package = "laputa-atomic-waker", version = "0.2.0", path = "crates/atomic-waker" }
-blocking = { package = "laputa-blocking", version = "0.2.0", path = "crates/blocking" }
-concurrent-queue = { package = "laputa-concurrent-queue", version = "0.2.0", path = "crates/concurrent-queue", default-features = false }
-event-listener = { package = "laputa-event-listener", version = "0.2.0", path = "crates/event-listener", default-features = false }
-event-listener-strategy = { package = "laputa-event-listener-strategy", version = "0.2.0", path = "crates/event-listener-strategy", default-features = false }
-fastrand = { package = "laputa-fastrand", version = "0.2.0", path = "crates/fastrand", default-features = false }
-futures-lite = { package = "laputa-futures-lite", version = "0.2.0", path = "crates/futures-lite", default-features = false }
-parking = { package = "laputa-parking", version = "0.2.0", path = "crates/parking" }
-piper = { package = "laputa-piper", version = "0.2.0", path = "crates/piper" }
-polling = { package = "laputa-polling", version = "0.2.0", path = "crates/polling" }
+async-channel = { package = "laputa-async-channel", version = "0.3.0", path = "crates/async-channel" }
+async-executor = { package = "laputa-async-executor", version = "0.3.0", path = "crates/async-executor" }
+async-fs = { package = "laputa-async-fs", version = "0.3.0", path = "crates/async-fs" }
+async-io = { package = "laputa-async-io", version = "0.3.0", path = "crates/async-io" }
+async-lock = { package = "laputa-async-lock", version = "0.3.0", path = "crates/async-lock" }
+async-net = { package = "laputa-async-net", version = "0.3.0", path = "crates/async-net" }
+async-process = { package = "laputa-async-process", version = "0.3.0", path = "crates/async-process" }
+async-signal = { package = "laputa-async-signal", version = "0.3.0", path = "crates/async-signal" }
+async-task = { package = "laputa-async-task", version = "0.3.0", path = "crates/async-task" }
+atomic-waker = { package = "laputa-atomic-waker", version = "0.3.0", path = "crates/atomic-waker" }
+blocking = { package = "laputa-blocking", version = "0.3.0", path = "crates/blocking" }
+concurrent-queue = { package = "laputa-concurrent-queue", version = "0.3.0", path = "crates/concurrent-queue", default-features = false }
+event-listener = { package = "laputa-event-listener", version = "0.3.0", path = "crates/event-listener", default-features = false }
+event-listener-strategy = { package = "laputa-event-listener-strategy", version = "0.3.0", path = "crates/event-listener-strategy", default-features = false }
+fastrand = { package = "laputa-fastrand", version = "0.3.0", path = "crates/fastrand", default-features = false }
+futures-lite = { package = "laputa-futures-lite", version = "0.3.0", path = "crates/futures-lite", default-features = false }
+parking = { package = "laputa-parking", version = "0.3.0", path = "crates/parking" }
+piper = { package = "laputa-piper", version = "0.3.0", path = "crates/piper" }
+polling = { package = "laputa-polling", version = "0.3.0", path = "crates/polling" }
