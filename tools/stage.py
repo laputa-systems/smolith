@@ -30,6 +30,7 @@ from identity import load_release
 ROOT = Path(__file__).resolve().parent.parent
 VERSION, COMPONENTS = load_release(ROOT)
 UPSTREAM_NAMES = {spec["upstream_name"] for spec in COMPONENTS.values()}
+OWNED_NAMES = {spec["package"] for spec in COMPONENTS.values()}
 
 
 class RegistryState:
@@ -107,7 +108,7 @@ def make_handler(state, origin):
                 if path != expected:
                     return self._send(404, "text/plain", b"")
                 body = state.index(name)
-                if body is None:
+                if body is None and name not in OWNED_NAMES:
                     body = proxy_bytes(state, state.proxied_index, f"https://index.crates.io/{index_prefix(name)}/{name}")
                 if body is None:
                     return self._send(404, "text/plain", b"")
@@ -115,7 +116,7 @@ def make_handler(state, origin):
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[0] == "crates" and parts[3] == "download":
                 crate = state.crate(parts[1], parts[2])
-                if crate is None:
+                if crate is None and parts[1] not in OWNED_NAMES:
                     crate = proxy_bytes(
                         state,
                         state.proxied_crate,
