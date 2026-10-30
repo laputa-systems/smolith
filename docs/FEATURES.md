@@ -1,6 +1,6 @@
 # Feature matrix
 
-Reference for the `[features]` table of each workspace crate at version 0.1.0. Cargo also turns an optional dependency into a feature when the `[features]` table does not name it. Those implicit features are listed under the crate.
+Reference for the `[features]` table of each workspace crate at version 0.3.0. Cargo also turns an optional dependency into a feature when the `[features]` table does not name it. Those implicit features are listed under the crate.
 
 Crates with no `[features]` table and no optional dependency: `laputa-async-broadcast`, `laputa-async-dup`, `laputa-async-fs`, `laputa-async-io`, `laputa-async-net`, `laputa-async-process`, `laputa-async-signal`, `laputa-atomic-waker`, `laputa-blocking`, `laputa-easy-parallel`, `laputa-parking`, `laputa-polling`, `laputa-smol`, `laputa-smol-macros`.
 

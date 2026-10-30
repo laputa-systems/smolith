@@ -1,12 +1,12 @@
 # smolith
 
-Workspace of the smol ecosystem. Published names are `laputa-*`. The facade is `laputa-smol` (library `smol`). One version, `0.1.0`. Upstream versions live in `UPSTREAM.toml`.
+Workspace of the smol ecosystem. Published names are `laputa-*`. The facade is `laputa-smol` (library `smol`). One version, `0.3.0`. Upstream versions live in `UPSTREAM.toml`.
 
 ## Commands
 
 - `cargo test --workspace` runs the suite, including doctests.
 - `cargo clippy --workspace --all-targets` is the lint. This repo has no rustfmt.
-- `tools/graph-gate.sh` checks owned edges: `laputa-*` 0.1.0, one version each, no `tokio` in normal or build dependencies.
+- `tools/graph-gate.sh` checks owned edges: `laputa-*` 0.3.0, one version each, no `tokio` in normal or build dependencies.
 - `tools/advisory-scan.sh` maps `UPSTREAM.toml` through the RustSec database, including optional normal features. `--offline` skips the refresh.
 - `tools/stage.sh` publishes every crate to a local registry and builds a fresh consumer from that index.
 - `make publish` bumps the workspace minor version, commits and tags the release, and publishes `laputa-*` crates in dependency order. See [release](docs/release.md).

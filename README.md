@@ -12,7 +12,7 @@ In a crate outside this workspace:
 
 ```toml
 [dependencies]
-smol = { package = "laputa-smol", version = "0.1.0", path = "../smolith/crates/smol" }
+smol = { package = "laputa-smol", version = "0.3.0", path = "../smolith/crates/smol" }
 ```
 
 `smol::block_on` runs a future to completion. `smol::spawn` schedules work on the global executor. `smol::net` is TCP, UDP, and Unix sockets. `smol::fs` is the filesystem. `smol::channel` is a multi-producer multi-consumer channel.
