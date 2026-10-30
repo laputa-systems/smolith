@@ -1,7 +1,7 @@
 use core::fmt;
 use core::future::Future;
 use core::marker::PhantomData;
-use core::mem;
+use core::mem::ManuallyDrop;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
@@ -85,9 +85,11 @@ impl<T, M> Task<T, M> {
     /// .detach();
     /// ```
     pub fn detach(self) {
-        let this = self;
-        let _out = set_detached::<T>(this.ptr.as_ptr());
-        mem::forget(this);
+        let mut handle = DetachHandle {
+            task: ManuallyDrop::new(self),
+            owns_task: true,
+        };
+        let _out = set_detached::<T>(handle.task.ptr.as_ptr(), &mut handle.owns_task);
     }
 
     /// Cancels the task and waits for it to stop running.
@@ -209,9 +211,22 @@ impl<T, M> Task<T, M> {
     }
 }
 
+struct DetachHandle<T, M> {
+    task: ManuallyDrop<Task<T, M>>,
+    owns_task: bool,
+}
+
+impl<T, M> Drop for DetachHandle<T, M> {
+    fn drop(&mut self) {
+        if self.owns_task {
+            unsafe { ManuallyDrop::drop(&mut self.task) }
+        }
+    }
+}
+
 /// Puts the task in detached state.
 #[inline(never)]
-fn set_detached<T>(ptr: *const ()) -> Option<Result<T, Panic>> {
+fn set_detached<T>(ptr: *const (), owns_task: &mut bool) -> Option<Result<T, Panic>> {
     let header = ptr as *const Header;
 
     unsafe {
@@ -273,6 +288,7 @@ fn set_detached<T>(ptr: *const ()) -> Option<Result<T, Panic>> {
                         Ordering::Acquire,
                     ) {
                         Ok(_) => {
+                            *owns_task = false;
                             // If this is the last reference to the task, we need to either
                             // schedule dropping its future or destroy it.
                             if schedules {
@@ -294,6 +310,8 @@ fn set_detached<T>(ptr: *const ()) -> Option<Result<T, Panic>> {
                     }
                 }
             }
+        } else {
+            *owns_task = false;
         }
 
         output
@@ -465,7 +483,7 @@ impl<T, M> Drop for Task<T, M> {
     fn drop(&mut self) {
         let ptr = self.ptr.as_ptr();
         set_canceled(ptr);
-        set_detached::<T>(ptr);
+        set_detached::<T>(ptr, &mut false);
     }
 }
 
