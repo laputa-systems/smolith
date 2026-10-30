@@ -30,6 +30,8 @@ jobs:
         run: cargo clippy --workspace --all-targets
       - name: test
         run: cargo test --workspace
+      - name: python tool tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' --verbose
       - name: feature and target check
         run: cargo check --workspace --all-features --all-targets
       - name: graph gate
@@ -155,9 +157,9 @@ jobs:
           components: rust-src, miri
       - name: setup
         run: cargo miri setup
-      - name: task pinning, metadata, and teardown
+      - name: task pinning, metadata, teardown, and detach
         run: |
-          cargo miri test --locked -p laputa-async-task --test local_task --test metadata --test schedule_lifetime
+          cargo miri test --locked -p laputa-async-task --test local_task --test metadata --test schedule_lifetime --test detach_panic
           cargo miri test --locked -p laputa-async-executor --lib shutdown_test
 
   loom:

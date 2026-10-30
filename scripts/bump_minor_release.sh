@@ -42,7 +42,7 @@ release_subject="chore(release): bump laputa workspace minor version"
 newline=$(printf '\nX')
 newline=${newline%X}
 
-RESET_PATHS="Cargo.toml Cargo.lock UPSTREAM.toml tests/qualify/Cargo.toml tests/consumer/Cargo.toml"
+RESET_PATHS="Cargo.toml Cargo.lock UPSTREAM.toml tests/qualify/Cargo.toml tests/consumer/Cargo.toml tests/consumer/Cargo.lock"
 
 on_exit() {
     exit_status=$1
@@ -75,6 +75,9 @@ on_exit() {
                 restore_failed=1
             fi
             if ! cp -p "$backup_dir/consumer.toml" "$ROOT/tests/consumer/Cargo.toml"; then
+                restore_failed=1
+            fi
+            if ! cp -p "$backup_dir/consumer.lock" "$ROOT/tests/consumer/Cargo.lock"; then
                 restore_failed=1
             fi
             if [ "$restore_failed" -ne 0 ]; then
@@ -408,6 +411,7 @@ cp -p "$ROOT/Cargo.lock" "$backup_dir/Cargo.lock" || fail "could not back up Car
 cp -p "$ROOT/UPSTREAM.toml" "$backup_dir/UPSTREAM.toml" || fail "could not back up UPSTREAM.toml"
 cp -p "$ROOT/tests/qualify/Cargo.toml" "$backup_dir/qualify.toml" || fail "could not back up tests/qualify/Cargo.toml"
 cp -p "$ROOT/tests/consumer/Cargo.toml" "$backup_dir/consumer.toml" || fail "could not back up tests/consumer/Cargo.toml"
+cp -p "$ROOT/tests/consumer/Cargo.lock" "$backup_dir/consumer.lock" || fail "could not back up tests/consumer/Cargo.lock"
 release_started=1
 
 bump_workspace_version() {
@@ -540,6 +544,11 @@ for file in tests/qualify/Cargo.toml tests/consumer/Cargo.toml; do
 done
 
 cargo check --workspace --quiet
+# tests/consumer is its own workspace, so the check above cannot refresh its
+# lockfile. Resolve and test the consumer here so the release commit carries a
+# lockfile that matches the rewritten requirement instead of leaving --locked
+# stale until the next minor bump.
+tests/consumer/check.sh
 for name in $LEAVES; do
     cargo publish -p "$name" --dry-run --allow-dirty
 done
