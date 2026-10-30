@@ -170,22 +170,18 @@ impl<'a> Executor<'a> {
     /// });
     /// ```
     pub fn spawn<T: Send + 'a>(&self, future: impl Future<Output = T> + Send + 'a) -> Task<T> {
-        let mut active = self.state().active();
-
-        // SAFETY: `T` and the future are `Send`.
-        unsafe { self.spawn_inner(future, &mut active) }
+        let (runnable, task) = {
+            let mut active = self.state().active();
+            // SAFETY: `T` and the future are `Send`.
+            unsafe { self.spawn_inner(future, &mut active) }
+        };
+        runnable.schedule();
+        task
     }
 
     /// Spawns many tasks onto the executor.
     ///
-    /// As opposed to the [`spawn`] method, this locks the executor's inner task lock once and
-    /// spawns all of the tasks in one go. With large amounts of tasks this can improve
-    /// contention.
-    ///
-    /// For very large numbers of tasks the lock is occasionally dropped and re-acquired to
-    /// prevent runner thread starvation. It is assumed that the iterator provided does not
-    /// block; blocking iterators can lock up the internal mutex and therefore the entire
-    /// executor.
+    /// Each task is registered and scheduled in iterator order.
     ///
     /// ## Example
     ///
@@ -221,24 +217,7 @@ impl<'a> Executor<'a> {
         futures: impl IntoIterator<Item = F>,
         handles: &mut impl Extend<Task<F::Output>>,
     ) {
-        let mut active = Some(self.state().active());
-
-        // Convert the futures into tasks.
-        let tasks = futures.into_iter().enumerate().map(move |(i, future)| {
-            // SAFETY: `T` and the future are `Send`.
-            let task = unsafe { self.spawn_inner(future, active.as_mut().unwrap()) };
-
-            // Yield the lock every once in a while to ease contention.
-            if i.wrapping_sub(1) % 500 == 0 {
-                drop(active.take());
-                active = Some(self.state().active());
-            }
-
-            task
-        });
-
-        // Push the tasks to the user's collection.
-        handles.extend(tasks);
+        handles.extend(futures.into_iter().map(|future| self.spawn(future)));
     }
 
     /// Spawn a future while holding the inner lock.
@@ -250,7 +229,7 @@ impl<'a> Executor<'a> {
         &self,
         future: impl Future<Output = T> + 'a,
         active: &mut Slab<Waker>,
-    ) -> Task<T> {
+    ) -> (Runnable, Task<T>) {
         // Remove the task from the set of active tasks when the future finishes.
         let entry = active.vacant_entry();
         let index = entry.key();
@@ -289,8 +268,7 @@ impl<'a> Executor<'a> {
             .spawn_unchecked(|()| future, self.schedule());
         entry.insert(runnable.waker());
 
-        runnable.schedule();
-        task
+        (runnable, task)
     }
 
     /// Attempts to run a task if at least one is scheduled.
@@ -535,22 +513,19 @@ impl<'a> LocalExecutor<'a> {
     /// });
     /// ```
     pub fn spawn<T: 'a>(&self, future: impl Future<Output = T> + 'a) -> Task<T> {
-        let mut active = self.inner().state().active();
-
-        // SAFETY: This executor is not thread safe, so the future and its result
-        //         cannot be sent to another thread.
-        unsafe { self.inner().spawn_inner(future, &mut active) }
+        let (runnable, task) = {
+            let mut active = self.inner().state().active();
+            // SAFETY: This executor is not thread safe, so the future and its result
+            //         cannot be sent to another thread.
+            unsafe { self.inner().spawn_inner(future, &mut active) }
+        };
+        runnable.schedule();
+        task
     }
 
     /// Spawns many tasks onto the executor.
     ///
-    /// As opposed to the [`spawn`] method, this locks the executor's inner task lock once and
-    /// spawns all of the tasks in one go. With large amounts of tasks this can improve
-    /// contention.
-    ///
-    /// It is assumed that the iterator provided does not block; blocking iterators can lock up
-    /// the internal mutex and therefore the entire executor. Unlike [`Executor::spawn`], the
-    /// mutex is not released, as there are no other threads that can poll this executor.
+    /// Each task is registered and scheduled in iterator order.
     ///
     /// ## Example
     ///
@@ -586,20 +561,7 @@ impl<'a> LocalExecutor<'a> {
         futures: impl IntoIterator<Item = F>,
         handles: &mut impl Extend<Task<F::Output>>,
     ) {
-        let mut active = self.inner().state().active();
-
-        // Convert all of the futures to tasks.
-        let tasks = futures.into_iter().map(|future| {
-            // SAFETY: This executor is not thread safe, so the future and its result
-            //         cannot be sent to another thread.
-            unsafe { self.inner().spawn_inner(future, &mut active) }
-
-            // As only one thread can spawn or poll tasks at a time, there is no need
-            // to release lock contention here.
-        });
-
-        // Push them to the user's collection.
-        handles.extend(tasks);
+        handles.extend(futures.into_iter().map(|future| self.spawn(future)));
     }
 
     /// Attempts to run a task if at least one is scheduled.
