@@ -883,6 +883,36 @@ where
     }
 }
 
+fn retry_interrupted<T>(mut operation: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    loop {
+        match operation() {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => return result,
+        }
+    }
+}
+
+struct Transfer<'a, T>(&'a mut T);
+
+impl<T: Read> Read for Transfer<'_, T> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        retry_interrupted(|| self.0.read(buf))
+    }
+}
+
+impl<T: Write> Write for Transfer<'_, T> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match retry_interrupted(|| self.0.write(buf))? {
+            0 if !buf.is_empty() => Err(io::ErrorKind::WriteZero.into()),
+            count => Ok(count),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        retry_interrupted(|| self.0.flush())
+    }
+}
+
 impl<T: Read + Send + 'static> AsyncRead for Unblock<T> {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -921,7 +951,7 @@ impl<T: Read + Send + 'static> AsyncRead for Unblock<T> {
                         // Copy bytes from the I/O handle into the pipe until the pipe is closed or
                         // an error occurs.
                         loop {
-                            match future::poll_fn(|cx| writer.poll_fill(cx, &mut io)).await {
+                            match future::poll_fn(|cx| writer.poll_fill(cx, Transfer(&mut io))).await {
                                 Ok(0) => return (Ok(()), io),
                                 Ok(_) => {}
                                 Err(err) => return (Err(err), io),
@@ -1002,11 +1032,11 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
                         // Copy bytes from the pipe into the I/O handle until the pipe is closed or an
                         // error occurs. Flush the I/O handle at the end.
                         loop {
-                            match future::poll_fn(|cx| reader.poll_drain(cx, &mut io)).await {
-                                Ok(0) => return (io.flush(), io),
+                            match future::poll_fn(|cx| reader.poll_drain(cx, Transfer(&mut io))).await {
+                                Ok(0) => return (retry_interrupted(|| io.flush()), io),
                                 Ok(_) => {}
                                 Err(err) => {
-                                    io.flush().ok();
+                                    retry_interrupted(|| io.flush()).ok();
                                     return (Err(err), io);
                                 }
                             }
@@ -1086,7 +1116,7 @@ impl<T: Write + Send + 'static> AsyncWrite for Unblock<T> {
                 State::Idle(io) => {
                     let mut io = io.take().expect("inner value was taken out");
                     let task = Executor::spawn(async move {
-                        let res = io.flush();
+                        let res = retry_interrupted(|| io.flush());
                         (res, io)
                     });
                     self.state = State::Flushing(task);
@@ -1128,7 +1158,7 @@ impl<T: Seek + Send + 'static> AsyncSeek for Unblock<T> {
                     let mut io = io.take().expect("inner value was taken out");
 
                     let task = Executor::spawn(async move {
-                        let res = io.seek(pos);
+                        let res = retry_interrupted(|| io.seek(pos));
                         (pos, res, io)
                     });
                     self.state = State::Seeking(task);
