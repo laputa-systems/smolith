@@ -48,29 +48,6 @@ To call Tokio libraries from this runtime, adapt the futures with [async-compat]
 - `futures-lite`: futures, streams, and async I/O combinators
 - `polling`: epoll, kqueue, and event ports
 
-## TLS certificate
-
-Some code examples are using TLS for authentication. The repository
-contains a self-signed certificate usable for testing, but it should **not**
-be used for real-world scenarios. Browsers and tools like curl will
-show this certificate as insecure.
-
-In browsers, accept the security prompt or use `curl -k` on the
-command line to bypass security warnings.
-
-The certificate file was generated using
-[minica](https://github.com/jsha/minica) and
-[openssl](https://www.openssl.org/):
-
-```text
-minica --domains localhost -ip-addresses 127.0.0.1 -ca-cert certificate.pem
-openssl pkcs12 -export -out identity.pfx -inkey localhost/key.pem -in localhost/cert.pem
-```
-
-Another useful tool for making certificates is [mkcert].
-
-[mkcert]: https://github.com/FiloSottile/mkcert
-
 ## MSRV Policy
 
 The Minimum Supported Rust Version (MSRV) of this crate is **1.85**. As a **tentative** policy, the MSRV will not advance past the [current Rust version provided by Debian Stable](https://packages.debian.org/stable/rust/rustc). At the time of writing, this version of Rust is *1.85*. However, the MSRV may be advanced further in the event of a major ecosystem shift or a security vulnerability.

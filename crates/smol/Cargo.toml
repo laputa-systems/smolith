@@ -29,31 +29,13 @@ futures-lite = { workspace = true, features = ["race", "std"] }
 async-process = { workspace = true }
 
 [dev-dependencies]
-anyhow = "1"
 async-dup = { package = "laputa-async-dup", path = "../async-dup" }
-async-native-tls = "0.6"
-async-tungstenite = { version = "0.35", features = ["async-native-tls"] }
 ctrlc = "3"
 doc-comment = "0.3"
-futures = "0.3"
-http = "1.1"
-http-body-util = "0.1.0"
-http-types = "2"
-hyper = { version = "1.0", default-features = false, features = ["client", "http1", "server"] }
-macro_rules_attribute = "0.2.0"
-native-tls = "0.2"
-scraper = "0.29"
 signal-hook = "0.4"
-smol-hyper = "0.1.0"
 smol-macros = { package = "laputa-smol-macros", path = "../smol-macros" }
-tempfile = "3"
-url = "2"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 inotify = { version = "0.11", default-features = false }
 rustix = "1.0"
 timerfd = "1"
-
-[target.'cfg(not(target_os = "linux"))'.dev-dependencies]
-async-h1 = "2"
-surf = { version = "2", default-features = false, features = ["h1-client"] }
