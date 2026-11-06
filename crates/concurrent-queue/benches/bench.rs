@@ -1,10 +1,12 @@
-#![allow(clippy::incompatible_msrv)] // false positive: https://github.com/rust-lang/rust-clippy/issues/12257#issuecomment-2093667187
-
-use std::{any::type_name, fmt::Debug, hint::black_box};
+use std::fmt::Debug;
 
 use concurrent_queue::{ConcurrentQueue, PopError};
-use criterion::{criterion_group, criterion_main, Criterion};
 use easy_parallel::Parallel;
+use rustybench::{black_box, Bencher};
+
+fn main() {
+    rustybench::main();
+}
 
 const COUNT: usize = 100_000;
 const THREADS: usize = 7;
@@ -59,37 +61,50 @@ fn single_thread<T: Default + std::fmt::Debug>(
     }
 }
 
-// Because we can't pass generic functions as const parameters.
-macro_rules! bench_all(
-    ($name:ident, $f:ident) => {
-        fn $name(c: &mut Criterion) {
-            fn helper<T: Default + Debug + Send>(c: &mut Criterion) {
-                let name = format!("unbounded_{}_{}", stringify!($f), type_name::<T>());
+#[rustybench::bench(types = [u8, u16, u32, u64, u128])]
+fn unbounded_single_thread<T: Default + Debug>(bencher: Bencher) {
+    bencher.bench_local(|| {
+        let q = ConcurrentQueue::unbounded();
+        single_thread::<T>(black_box(&q), black_box(&q));
+    });
+}
 
-                c.bench_function(&name, |b| b.iter(|| {
-                    let q = ConcurrentQueue::unbounded();
-                    $f::<T>(black_box(&q), black_box(&q));
-                }));
+#[rustybench::bench(types = [u8, u16, u32, u64, u128])]
+fn bounded_single_thread<T: Default + Debug>(bencher: Bencher) {
+    bencher.bench_local(|| {
+        let q = ConcurrentQueue::bounded(THREADS * COUNT);
+        single_thread::<T>(black_box(&q), black_box(&q));
+    });
+}
 
-                let name = format!("bounded_{}_{}", stringify!($f), type_name::<T>());
+#[rustybench::bench(types = [u8, u16, u32, u64, u128])]
+fn unbounded_spsc<T: Default + Debug + Send>(bencher: Bencher) {
+    bencher.bench_local(|| {
+        let q = ConcurrentQueue::unbounded();
+        spsc::<T>(black_box(&q), black_box(&q));
+    });
+}
 
-                c.bench_function(&name, |b| b.iter(|| {
-                    let q = ConcurrentQueue::bounded(THREADS * COUNT);
-                    $f::<T>(black_box(&q), black_box(&q));
-                }));
-            }
-            helper::<u8>(c);
-            helper::<u16>(c);
-            helper::<u32>(c);
-            helper::<u64>(c);
-            helper::<u128>(c);
-        }
-    }
-);
+#[rustybench::bench(types = [u8, u16, u32, u64, u128])]
+fn bounded_spsc<T: Default + Debug + Send>(bencher: Bencher) {
+    bencher.bench_local(|| {
+        let q = ConcurrentQueue::bounded(THREADS * COUNT);
+        spsc::<T>(black_box(&q), black_box(&q));
+    });
+}
 
-bench_all!(bench_spsc, spsc);
-bench_all!(bench_mpsc, mpsc);
-bench_all!(bench_single_thread, single_thread);
+#[rustybench::bench(types = [u8, u16, u32, u64, u128])]
+fn unbounded_mpsc<T: Default + Debug + Send>(bencher: Bencher) {
+    bencher.bench_local(|| {
+        let q = ConcurrentQueue::unbounded();
+        mpsc::<T>(black_box(&q), black_box(&q));
+    });
+}
 
-criterion_group!(generic_group, bench_single_thread, bench_spsc, bench_mpsc);
-criterion_main!(generic_group);
+#[rustybench::bench(types = [u8, u16, u32, u64, u128])]
+fn bounded_mpsc<T: Default + Debug + Send>(bencher: Bencher) {
+    bencher.bench_local(|| {
+        let q = ConcurrentQueue::bounded(THREADS * COUNT);
+        mpsc::<T>(black_box(&q), black_box(&q));
+    });
+}

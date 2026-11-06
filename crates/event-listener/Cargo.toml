@@ -46,10 +46,8 @@ futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 try-lock = "0.2.5"
 waker-fn = { package = "laputa-waker-fn", path = "../waker-fn" }
 
-[dev-dependencies.criterion]
-version = "0.8"
-default-features = false
-features = ["cargo_bench_support"]
+[dev-dependencies.rustybench]
+version = "0.4"
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

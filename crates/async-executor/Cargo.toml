@@ -33,7 +33,7 @@ futures-lite = { workspace = true, default-features = false, features = ["std"] 
 async-channel = { package = "laputa-async-channel", path = "../async-channel" }
 async-io = { package = "laputa-async-io", path = "../async-io" }
 async-lock = { package = "laputa-async-lock", path = "../async-lock" }
-criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+rustybench = "0.4"
 easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
 fastrand = { package = "laputa-fastrand", path = "../fastrand" }
 futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }

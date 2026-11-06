@@ -1,12 +1,13 @@
 //! Benchmarks for registering timers.
 
-#![allow(clippy::incompatible_msrv)] // false positive: https://github.com/rust-lang/rust-clippy/issues/12257#issuecomment-2093667187
-
 use async_io::Timer;
-use criterion::{criterion_group, criterion_main, Criterion};
 use futures_lite::future;
-use std::hint::black_box;
+use rustybench::{black_box, Bencher};
 use std::time::Duration;
+
+fn main() {
+    rustybench::main();
+}
 
 /// Create a new `Timer` and poll it once to register it into the timer wheel.
 fn make_timer() -> Timer {
@@ -16,27 +17,14 @@ fn make_timer() -> Timer {
 }
 
 /// Benchmark the time it takes to register and deregister a timer.
-fn register_timer(c: &mut Criterion) {
-    let mut group = c.benchmark_group("register_timer");
-    for prev_timer_count in [0, 1_000_000] {
-        // Add timers to the timer wheel.
-        let mut timers = Vec::new();
-        for _ in 0..prev_timer_count {
-            timers.push(make_timer());
-        }
+#[rustybench::bench(args = [0, 1_000_000])]
+fn register_timer(bencher: Bencher, prev_timer_count: usize) {
+    let timers: Vec<_> = (0..prev_timer_count).map(|_| make_timer()).collect();
 
-        // Benchmark registering a timer.
-        group.bench_function(
-            format!("register_timer.({prev_timer_count} previous timers)"),
-            |b| {
-                b.iter(|| {
-                    let timer = make_timer();
-                    black_box(timer);
-                });
-            },
-        );
-    }
+    bencher.bench_local(|| {
+        let timer = make_timer();
+        black_box(timer);
+    });
+
+    drop(timers);
 }
-
-criterion_group!(benches, register_timer);
-criterion_main!(benches);
