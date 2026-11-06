@@ -15,7 +15,7 @@
 //!
 //! ```no_run
 //! use async_dup::Arc;
-//! use futures::io;
+//! use smol::io;
 //! use smol::Async;
 //! use std::net::TcpStream;
 //!
@@ -36,8 +36,8 @@
 //!
 //! ```
 //! use async_dup::Mutex;
-//! use futures::io;
-//! use futures::prelude::*;
+//! use smol::io;
+//! use smol::prelude::*;
 //!
 //! // Reads data from a stream and echoes it back.
 //! async fn echo(stream: impl AsyncRead + AsyncWrite + Unpin) -> io::Result<u64> {

@@ -60,8 +60,9 @@ use portable_atomic::AtomicUsize;
 /// when it is ready.
 ///
 /// ```
-/// use futures::future::Future;
-/// use futures::task::{Context, Poll, AtomicWaker};
+/// use std::future::Future;
+/// use std::task::{Context, Poll};
+/// use atomic_waker::AtomicWaker;
 /// use std::sync::Arc;
 /// use std::sync::atomic::AtomicBool;
 /// use std::sync::atomic::Ordering::Relaxed;
@@ -256,8 +257,9 @@ impl AtomicWaker {
     /// Here is how `register` is used when implementing a flag.
     ///
     /// ```
-    /// use futures::future::Future;
-    /// use futures::task::{Context, Poll, AtomicWaker};
+    /// use std::future::Future;
+    /// use std::task::{Context, Poll};
+    /// use atomic_waker::AtomicWaker;
     /// use std::sync::atomic::AtomicBool;
     /// use std::sync::atomic::Ordering::Relaxed;
     /// use std::pin::Pin;

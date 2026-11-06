@@ -1,10 +1,11 @@
 use std::{sync::mpsc, thread::sleep, time::Duration};
 
 use async_broadcast::*;
-use futures_util::{future::join, stream::StreamExt};
-
 use easy_parallel::Parallel;
-use futures_lite::future::block_on;
+use futures_lite::{
+    future::{block_on, zip as join},
+    stream::StreamExt,
+};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

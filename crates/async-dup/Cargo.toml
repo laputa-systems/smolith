@@ -21,5 +21,4 @@ async-lock = { workspace = true }
 futures-io = "0.3.5"
 
 [dev-dependencies]
-futures = { version = "0.3.5", default-features = false, features = ["std"] }
 smol = { package = "laputa-smol", path = "../smol" }

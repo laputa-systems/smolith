@@ -5,8 +5,7 @@ use std::task::Poll;
 use std::thread;
 
 use atomic_waker::AtomicWaker;
-use futures::executor::block_on;
-use futures::future::poll_fn;
+use futures_lite::future::{block_on, poll_fn};
 
 #[test]
 fn basic() {
