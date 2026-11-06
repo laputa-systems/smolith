@@ -250,9 +250,15 @@ fn sigusr2_wakes_poller() {
         });
         ready_rx.recv().unwrap();
         thread::sleep(Duration::from_millis(10));
-        // SAFETY: SIGUSR2 has a no-op handler until `RestoreSig` drops.
-        let rc = unsafe { libc::kill(libc::getpid(), libc::SIGUSR2) };
-        assert_eq!(rc, 0, "kill: {}", io::Error::last_os_error());
+        // SAFETY: SIGUSR2 has a no-op handler until `RestoreSig` drops, and the target thread
+        // has not been joined.
+        let rc = unsafe {
+            libc::pthread_kill(
+                std::os::unix::thread::JoinHandleExt::as_pthread_t(&handle),
+                libc::SIGUSR2,
+            )
+        };
+        assert_eq!(rc, 0, "pthread_kill: {}", io::Error::from_raw_os_error(rc));
         poller.notify().unwrap();
         let (elapsed, result) = handle.join().unwrap();
         result.unwrap();
@@ -263,10 +269,30 @@ fn sigusr2_wakes_poller() {
     }
 }
 
+const WATCHED_FLOOR: libc::c_int = 160;
+const ASYNC_FLOOR: libc::c_int = 192;
+
+fn listener_at_or_above(floor: libc::c_int) -> StdTcpListener {
+    let listener = StdTcpListener::bind("127.0.0.1:0").unwrap();
+    // SAFETY: the descriptor is open and owned by `listener`; F_DUPFD_CLOEXEC returns a new
+    // descriptor that nothing else owns, so `from_raw_fd` takes sole ownership of it.
+    let high = unsafe {
+        let fd = libc::fcntl(
+            std::os::unix::io::AsRawFd::as_raw_fd(&listener),
+            libc::F_DUPFD_CLOEXEC,
+            floor,
+        );
+        assert!(fd >= floor, "fcntl F_DUPFD_CLOEXEC failed: {}", io::Error::last_os_error());
+        std::os::unix::io::FromRawFd::from_raw_fd(fd)
+    };
+    drop(listener);
+    high
+}
+
 #[test]
 fn reused_descriptor_is_not_watched() {
     let poller = Poller::new().unwrap();
-    let listener = StdTcpListener::bind("127.0.0.1:0").unwrap();
+    let listener = listener_at_or_above(WATCHED_FLOOR);
     listener.set_nonblocking(true).unwrap();
     let fd = std::os::unix::io::AsRawFd::as_raw_fd(&listener);
     // SAFETY: `listener` is deleted before this test drops it.
@@ -274,18 +300,13 @@ fn reused_descriptor_is_not_watched() {
     poller.delete(&listener).unwrap();
     drop(listener);
 
-    let mut held = Vec::new();
-    let mut reused = None;
-    for _ in 0..128 {
-        let next = StdTcpListener::bind("127.0.0.1:0").unwrap();
-        next.set_nonblocking(true).unwrap();
-        if std::os::unix::io::AsRawFd::as_raw_fd(&next) == fd {
-            reused = Some(next);
-            break;
-        }
-        held.push(next);
-    }
-    let reused = reused.expect("descriptor number was not reused");
+    let reused = listener_at_or_above(WATCHED_FLOOR);
+    reused.set_nonblocking(true).unwrap();
+    assert_eq!(
+        std::os::unix::io::AsRawFd::as_raw_fd(&reused),
+        fd,
+        "descriptor number was not reused"
+    );
     let mut events = Events::new();
     let n = poller
         .wait(&mut events, Some(Duration::from_millis(50)))
@@ -301,26 +322,20 @@ fn reused_descriptor_is_not_watched() {
         n, 0,
         "interest followed a descriptor number onto a new socket"
     );
-    drop(held);
 }
 
 #[test]
 fn reused_async_listener_is_not_readable() {
     within(Duration::from_secs(2), async {
-        let listener = Async::<StdTcpListener>::bind(([127, 0, 0, 1], 0)).unwrap();
+        let listener = Async::new(listener_at_or_above(ASYNC_FLOOR)).unwrap();
         let fd = std::os::unix::io::AsRawFd::as_raw_fd(&listener);
         drop(listener);
-        let mut held = Vec::new();
-        let mut reused = None;
-        for _ in 0..128 {
-            let next = Async::<StdTcpListener>::bind(([127, 0, 0, 1], 0)).unwrap();
-            if std::os::unix::io::AsRawFd::as_raw_fd(&next) == fd {
-                reused = Some(next);
-                break;
-            }
-            held.push(next);
-        }
-        let reused = reused.expect("descriptor number was not reused");
+        let reused = Async::new(listener_at_or_above(ASYNC_FLOOR)).unwrap();
+        assert_eq!(
+            std::os::unix::io::AsRawFd::as_raw_fd(&reused),
+            fd,
+            "descriptor number was not reused"
+        );
         let early = future::or(
             async { reused.readable().await.map(|_| true) },
             async {
@@ -334,7 +349,6 @@ fn reused_async_listener_is_not_readable() {
         let addr = reused.get_ref().local_addr().unwrap();
         let _client = Async::<StdTcpStream>::connect(addr).await.unwrap();
         reused.readable().await.unwrap();
-        drop(held);
     });
 }
 
