@@ -1,10 +1,8 @@
 use std::borrow::Borrow;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::future::Future;
 use std::io;
 use std::marker::PhantomData;
-use std::mem;
 use std::panic;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -14,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use concurrent_queue::ConcurrentQueue;
 use polling::{Event, Events, Poller};
+use rustc_hash::FxHashMap;
 use slab::Slab;
 
 // Choose the proper implementation of `Registration` based on the target platform.
@@ -71,12 +70,11 @@ pub(crate) struct Reactor {
     /// Holding a lock on this event list implies the exclusive right to poll I/O.
     events: Mutex<Events>,
 
-    /// An ordered map of registered timers.
+    /// The registered timers, kept in the order in which they fire.
     ///
-    /// Timers are in the order in which they fire. The `usize` in this type is a timer ID used to
-    /// distinguish timers that fire at the same time. The `Waker` represents the task awaiting the
-    /// timer.
-    timers: Mutex<BTreeMap<(Instant, usize), Waker>>,
+    /// The `usize` in the key is a timer ID used to distinguish timers that fire at the same time.
+    /// The `Waker` represents the task awaiting the timer.
+    timers: Mutex<Timers>,
 
     /// A queue of timer operations (insert and remove).
     ///
@@ -97,7 +95,7 @@ impl Reactor {
                 ticker: AtomicUsize::new(0),
                 sources: Mutex::new(Slab::new()),
                 events: Mutex::new(Events::new()),
-                timers: Mutex::new(BTreeMap::new()),
+                timers: Mutex::new(Timers::new()),
                 timer_ops: ConcurrentQueue::bounded(TIMER_QUEUE_SIZE),
             }
         })
@@ -213,16 +211,14 @@ impl Reactor {
         //
         // Careful to split just *after* `now`, so that a timer set for exactly `now` is considered
         // ready.
-        let pending = timers.split_off(&(now + Duration::from_nanos(1), 0));
-        let ready = mem::replace(&mut *timers, pending);
+        let ready = timers.split_off(&(now + Duration::from_nanos(1), 0));
 
         // Calculate the duration until the next event.
         let dur = if ready.is_empty() {
             // Duration until the next timer.
             timers
-                .keys()
-                .next()
-                .map(|(when, _)| when.saturating_duration_since(now))
+                .next_deadline()
+                .map(|when| when.saturating_duration_since(now))
         } else {
             // Timers are about to fire right now.
             Some(Duration::from_secs(0))
@@ -243,7 +239,7 @@ impl Reactor {
     }
 
     /// Processes queued timer operations.
-    fn process_timer_ops(&self, timers: &mut MutexGuard<'_, BTreeMap<(Instant, usize), Waker>>) {
+    fn process_timer_ops(&self, timers: &mut MutexGuard<'_, Timers>) {
         // Process only as much as fits into the queue, or else this loop could in theory run
         // forever.
         self.timer_ops
@@ -361,6 +357,67 @@ impl ReactorLock<'_> {
         }
 
         res
+    }
+}
+
+/// The registered timers, keyed by the instant at which they fire.
+///
+/// Timers are looked up by key, but they must also be visited in the order in which they fire.
+/// `entries` holds the wakers, while `order` holds the same keys sorted by deadline, so that
+/// "the next timer" is `order.first()` and "every timer up to now" is a prefix of `order`. Both
+/// are updated together and always describe the same key set.
+struct Timers {
+    /// Wakers of the registered timers, keyed by `(deadline, timer ID)`.
+    entries: FxHashMap<(Instant, usize), Waker>,
+
+    /// The keys of `entries`, sorted by `(deadline, timer ID)`.
+    order: Vec<(Instant, usize)>,
+}
+
+impl Timers {
+    /// Creates an empty timer set.
+    fn new() -> Self {
+        Self {
+            entries: FxHashMap::default(),
+            order: Vec::new(),
+        }
+    }
+
+    /// Inserts a timer, replacing the waker if the key is already registered.
+    fn insert(&mut self, key: (Instant, usize), waker: Waker) {
+        if self.entries.insert(key, waker).is_none() {
+            // The key was not registered, so it cannot be in `order` either.
+            let pos = self.order.binary_search(&key).unwrap_err();
+            self.order.insert(pos, key);
+        }
+    }
+
+    /// Removes the timer with the given key, if it is registered.
+    fn remove(&mut self, key: &(Instant, usize)) {
+        if self.entries.remove(key).is_some() {
+            if let Ok(pos) = self.order.binary_search(key) {
+                self.order.remove(pos);
+            }
+        }
+    }
+
+    /// Returns the deadline of the earliest registered timer.
+    fn next_deadline(&self) -> Option<Instant> {
+        self.order.first().map(|(when, _)| *when)
+    }
+
+    /// Removes every timer whose key sorts before `cutoff` and returns them in deadline order.
+    fn split_off(&mut self, cutoff: &(Instant, usize)) -> Vec<((Instant, usize), Waker)> {
+        let split = self.order.partition_point(|key| key < cutoff);
+        let mut ready = Vec::with_capacity(split);
+
+        for key in self.order.drain(..split) {
+            if let Some(waker) = self.entries.remove(&key) {
+                ready.push((key, waker));
+            }
+        }
+
+        ready
     }
 }
 
