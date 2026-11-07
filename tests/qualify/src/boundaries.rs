@@ -254,7 +254,7 @@ fn sigusr2_wakes_poller() {
         // has not been joined.
         let rc = unsafe {
             libc::pthread_kill(
-                std::os::unix::thread::JoinHandleExt::as_pthread_t(&handle),
+                std::os::unix::thread::JoinHandleExt::as_pthread_t(&handle) as libc::pthread_t,
                 libc::SIGUSR2,
             )
         };
