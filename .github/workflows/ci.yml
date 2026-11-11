@@ -5,7 +5,7 @@ on:
   pull_request:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: "${{ github.workflow }}-${{ github.head_ref || github.run_id }}"
   cancel-in-progress: true
 
 permissions:
@@ -13,6 +13,10 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
 
 jobs:
   verify:
