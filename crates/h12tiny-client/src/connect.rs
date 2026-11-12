@@ -1501,4 +1501,68 @@ mod tests {
 
         assert_eq!(config.alpn_protocols, expected_default_alpn_protocols());
     }
+
+    #[cfg(feature = "tls")]
+    #[test]
+    fn unsupported_protocol_versions_are_configuration_errors() {
+        use h12tiny_tls_system::{SystemClientConfigBuilder, SystemTrustErrorKind};
+        use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+
+        let provider = Arc::new(rustls_graviola::default_provider());
+        let mut tls13_only = rustls_graviola::default_provider();
+        tls13_only
+            .cipher_suites
+            .retain(|suite| suite.version() == &rustls::version::TLS13);
+        let tls13_only = Arc::new(tls13_only);
+        let empty: [&'static rustls::SupportedProtocolVersion; 0] = [];
+
+        let selections: [(&Arc<rustls::crypto::CryptoProvider>, &[&rustls::SupportedProtocolVersion]); 2] = [
+            (&provider, &empty),
+            (&tls13_only, &[&rustls::version::TLS12]),
+        ];
+        for (provider, versions) in selections {
+            let rejected = [
+                SystemClientConfigBuilder::new(Arc::clone(provider), Vec::new())
+                    .protocol_versions(versions.iter().copied())
+                    .build(),
+                {
+                    let (chain, key) = dummy_client_identity();
+                    SystemClientConfigBuilder::new(Arc::clone(provider), Vec::new())
+                        .protocol_versions(versions.iter().copied())
+                        .client_auth(chain, key)
+                        .build()
+                },
+                SystemClientConfigBuilder::new(Arc::clone(provider), Vec::new())
+                    .root_certificates(rustls::RootCertStore::empty())
+                    .protocol_versions(versions.iter().copied())
+                    .build(),
+                {
+                    let (chain, key) = dummy_client_identity();
+                    SystemClientConfigBuilder::new(Arc::clone(provider), Vec::new())
+                        .root_certificates(rustls::RootCertStore::empty())
+                        .protocol_versions(versions.iter().copied())
+                        .client_auth(chain, key)
+                        .build()
+                },
+            ];
+            for result in rejected {
+                assert_eq!(
+                    result.unwrap_err().kind(),
+                    SystemTrustErrorKind::Unsupported
+                );
+            }
+        }
+
+        let client = ClientTlsConfigBuilder::new()
+            .protocol_versions(empty)
+            .build();
+        assert!(client.is_err());
+
+        fn dummy_client_identity() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<'static>) {
+            (
+                vec![CertificateDer::from(vec![0])],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(vec![0])),
+            )
+        }
+    }
 }

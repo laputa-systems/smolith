@@ -20,15 +20,6 @@ Next: 27
 - **Fix with:** `single-source-of-truth`
 - **Effort:** S (hours)
 
-### H12T-24 · P2 · Fallible system-trust TLS builders panic on unsupported configuration
-
-- **Area:** Errors
-- **Where:** `crates/h12tiny-tls-system/src/lib.rs:438`, `:631`; `crates/h12tiny-client/src/connect.rs:370`, `:412`.
-- **Problem:** The default system-trust/no-client-auth branch calls `expect` on Rustls protocol/provider validation even though `build()` returns `Result` and the client wrapper promises a configuration error for an empty protocol list. A local construction-only check of `.protocol_versions([]).build()` caught the panic at line 448. The same selection with explicit roots returned the expected `Err`. No handshake or remote peer was involved. Equivalent client-auth and explicit-root branches already map unsupported configurations to a typed error.
-- **Recommendation:** Propagate configuration errors from the `Result`-returning system-trust builders as `SystemTrustErrorKind::Unsupported`, consistently with the other trust/auth branches. Keep the public lazy-constructor signature separate unless an API change is explicitly chosen. Verify empty and provider-incompatible version selections across trust/auth variants.
-- **Fix with:** `error-model`
-- **Effort:** S (hours)
-
 ### H12T-25 · P2 · Production listener deadlines exclude connection setup
 
 - **Area:** Concurrency

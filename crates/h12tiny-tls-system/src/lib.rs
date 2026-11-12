@@ -417,7 +417,7 @@ pub fn system_client_config_with_source(
     verifier.preload()?;
     let source = verifier.trust_source()?;
     Ok((
-        finish_system_config(provider, verifier, alpn_protocols, protocol_versions),
+        finish_system_config(provider, verifier, alpn_protocols, protocol_versions)?,
         source,
     ))
 }
@@ -425,14 +425,35 @@ pub fn system_client_config_with_source(
 /// Builds a system-trust configuration without touching the filesystem.
 ///
 /// The first handshake loads the store and fails closed when it is missing,
-/// unreadable, empty, or invalid. Infallible constructors use this so they
-/// stay infallible; fallible builders preload instead.
+/// unreadable, empty, or invalid. This constructor stays infallible: a
+/// provider that rejects Rustls' safe default protocol versions panics.
+/// Fallible builders report that rejection as
+/// [`SystemTrustErrorKind::Unsupported`].
 pub fn system_client_config_lazy(
     provider: Arc<CryptoProvider>,
     alpn_protocols: Vec<Vec<u8>>,
 ) -> rustls::ClientConfig {
     let verifier = Arc::new(SystemVerifier::new(provider.clone()));
     finish_system_config(provider, verifier, alpn_protocols, None)
+        .expect("safe default TLS protocol versions are supported")
+}
+
+fn client_builder_for_versions(
+    provider: Arc<CryptoProvider>,
+    protocol_versions: Option<Vec<&'static rustls::SupportedProtocolVersion>>,
+) -> Result<rustls::ConfigBuilder<rustls::ClientConfig, rustls::WantsVerifier>, SystemTrustError>
+{
+    let builder = rustls::ClientConfig::builder_with_provider(provider);
+    match protocol_versions {
+        Some(versions) => builder.with_protocol_versions(&versions),
+        None => builder.with_safe_default_protocol_versions(),
+    }
+    .map_err(|error| {
+        SystemTrustError::new(
+            SystemTrustErrorKind::Unsupported,
+            format!("TLS protocol versions are unsupported: {error}"),
+        )
+    })
 }
 
 fn finish_system_config(
@@ -440,22 +461,14 @@ fn finish_system_config(
     verifier: Arc<SystemVerifier>,
     alpn_protocols: Vec<Vec<u8>>,
     protocol_versions: Option<Vec<&'static rustls::SupportedProtocolVersion>>,
-) -> rustls::ClientConfig {
-    let builder = rustls::ClientConfig::builder_with_provider(provider);
-    let builder = match protocol_versions {
-        Some(versions) => builder
-            .with_protocol_versions(&versions)
-            .expect("requested TLS protocol versions are supported"),
-        None => builder
-            .with_safe_default_protocol_versions()
-            .expect("Graviola supports Rustls safe default protocol versions"),
-    };
+) -> Result<rustls::ClientConfig, SystemTrustError> {
+    let builder = client_builder_for_versions(provider, protocol_versions)?;
     let mut config = builder
         .dangerous()
         .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
     config.alpn_protocols = alpn_protocols;
-    config
+    Ok(config)
 }
 
 /// Builds a client configuration with system trust and mutual TLS identity.
@@ -488,21 +501,7 @@ pub fn system_client_config_with_auth_and_source(
     let verifier = Arc::new(SystemVerifier::new(provider.clone()));
     verifier.preload()?;
     let source = verifier.trust_source()?;
-    let builder = rustls::ClientConfig::builder_with_provider(provider);
-    let builder = match protocol_versions {
-        Some(versions) => builder.with_protocol_versions(&versions).map_err(|error| {
-            SystemTrustError::new(
-                SystemTrustErrorKind::Unsupported,
-                format!("TLS protocol versions are unsupported: {error}"),
-            )
-        })?,
-        None => builder.with_safe_default_protocol_versions().map_err(|error| {
-            SystemTrustError::new(
-                SystemTrustErrorKind::Unsupported,
-                format!("TLS protocol versions are unsupported: {error}"),
-            )
-        })?,
-    };
+    let builder = client_builder_for_versions(provider, protocol_versions)?;
     let mut config = builder
         .dangerous()
         .with_custom_certificate_verifier(verifier)
@@ -657,25 +656,7 @@ impl SystemClientConfigBuilder {
                 Ok((config, ClientTrustSource::System(source)))
             }
             (ClientTrust::Explicit(roots), client_auth) => {
-                let builder = rustls::ClientConfig::builder_with_provider(self.provider);
-                let builder = match self.protocol_versions {
-                    Some(versions) => builder.with_protocol_versions(&versions).map_err(
-                        |error| {
-                            SystemTrustError::new(
-                                SystemTrustErrorKind::Unsupported,
-                                format!("TLS protocol versions are unsupported: {error}"),
-                            )
-                        },
-                    )?,
-                    None => builder.with_safe_default_protocol_versions().map_err(
-                        |error| {
-                            SystemTrustError::new(
-                                SystemTrustErrorKind::Unsupported,
-                                format!("TLS protocol versions are unsupported: {error}"),
-                            )
-                        },
-                    )?,
-                };
+                let builder = client_builder_for_versions(self.provider, self.protocol_versions)?;
                 let mut config = match client_auth {
                     ClientAuthentication::None => {
                         builder.with_root_certificates(roots).with_no_client_auth()
