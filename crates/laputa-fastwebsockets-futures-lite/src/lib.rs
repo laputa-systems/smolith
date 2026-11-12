@@ -49,11 +49,17 @@ pub enum Role {
 
 pub(crate) struct WriteHalf {
   role: Role,
-  closed: bool,
+  close: CloseTransmission,
   vectored: bool,
   auto_apply_mask: bool,
   writev_threshold: usize,
   write_buffer: Vec<u8>,
+}
+
+enum CloseTransmission {
+  Open,
+  Sending { len: usize, sent: usize },
+  Sent,
 }
 
 pub(crate) struct ReadHalf {
@@ -215,9 +221,14 @@ impl<'f, S> WebSocketWrite<S> {
   }
 
   pub fn is_closed(&self) -> bool {
-    self.write_half.closed
+    matches!(self.write_half.close, CloseTransmission::Sent)
   }
 
+  /// Writes one frame.
+  ///
+  /// A close frame counts as sent only after the transport accepts every
+  /// byte. Canceling that write keeps the accepted prefix, and the next close
+  /// frame continues from there instead of reporting success.
   pub async fn write_frame(
     &mut self,
     frame: Frame<'f>,
@@ -479,7 +490,7 @@ impl WriteHalf {
   pub fn after_handshake(role: Role) -> Self {
     Self {
       role,
-      closed: false,
+      close: CloseTransmission::Open,
       auto_apply_mask: true,
       vectored: true,
       writev_threshold: 1024,
@@ -496,19 +507,30 @@ impl WriteHalf {
   where
     S: AsyncWrite + Unpin,
   {
+    match self.close {
+      CloseTransmission::Sent => {
+        if frame.opcode == OpCode::Close {
+          return Ok(());
+        }
+        return Err(WebSocketError::ConnectionClosed);
+      }
+      CloseTransmission::Sending { .. } => {
+        if frame.opcode != OpCode::Close {
+          return Err(WebSocketError::ConnectionClosed);
+        }
+        return self.write_pending_close(stream).await;
+      }
+      CloseTransmission::Open => {}
+    }
+
     if self.role == Role::Client && self.auto_apply_mask {
       frame.mask()?;
     }
 
-    if self.closed {
-      if frame.opcode == OpCode::Close {
-        return Ok(()); // Already sent close, this is a no-op
-      }
-      return Err(WebSocketError::ConnectionClosed);
-    }
-    let is_close = frame.opcode == OpCode::Close;
-    if is_close {
-      self.closed = true;
+    if frame.opcode == OpCode::Close {
+      let len = frame.write(&mut self.write_buffer).len();
+      self.close = CloseTransmission::Sending { len, sent: 0 };
+      return self.write_pending_close(stream).await;
     }
 
     if self.vectored && frame.payload.len() > self.writev_threshold {
@@ -519,5 +541,40 @@ impl WriteHalf {
     }
 
     Ok(())
+  }
+
+  async fn write_pending_close<S>(
+    &mut self,
+    stream: &mut S,
+  ) -> Result<(), WebSocketError>
+  where
+    S: AsyncWrite + Unpin,
+  {
+    loop {
+      let (len, sent) = match self.close {
+        CloseTransmission::Sending { len, sent } => (len, sent),
+        CloseTransmission::Sent => return Ok(()),
+        CloseTransmission::Open => {
+          unreachable!("a pending close has no encoded frame")
+        }
+      };
+      if sent == len {
+        self.close = CloseTransmission::Sent;
+        return Ok(());
+      }
+      let n = stream
+        .write(&self.write_buffer[sent..len])
+        .await
+        .map_err(WebSocketError::IoError)?;
+      if n == 0 {
+        return Err(WebSocketError::IoError(std::io::Error::new(
+          std::io::ErrorKind::WriteZero,
+          "failed to write WebSocket close frame",
+        )));
+      }
+      if let CloseTransmission::Sending { sent: cursor, .. } = &mut self.close {
+        *cursor += n;
+      }
+    }
   }
 }

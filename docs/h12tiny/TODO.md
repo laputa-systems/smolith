@@ -20,15 +20,6 @@ Next: 27
 - **Fix with:** `single-source-of-truth`
 - **Effort:** S (hours)
 
-### H12T-22 · P2 · A canceled WebSocket Close can report success without sending bytes
-
-- **Area:** Concurrency
-- **Where:** `crates/laputa-fastwebsockets-futures-lite/src/lib.rs:161`, `:282`, `:503`; `crates/h12tiny-web/src/lib.rs:2243`.
-- **Problem:** The writer sets `closed` before awaiting the Close frame's first write. Canceling while the transport is pending before any bytes are accepted leaves that flag set. Retrying Close then returns `Ok(())` without writing anything. An in-memory check against the actual fork observed `retry_result=Ok(()) writer_closed=true emitted_bytes=0`. This also defeats the reader's retained automatic-close reply: its callback can now falsely acknowledge delivery and clear the obligation. No partial frame was emitted in the reproduced case, so it does not violate the documented callback requirement against unacknowledged partial writes.
-- **Recommendation:** Distinguish a pending Close from a fully transmitted Close and retain write progress across cancellation, or return an explicit terminal failure when transmission cannot safely resume. Do not acknowledge an unsent frame. Cover both zero-byte and partial-write cancellation; moving the boolean below the await alone does not settle the latter.
-- **Fix with:** `lifecycle-concurrency`
-- **Effort:** M (days)
-
 ### H12T-23 · P2 · Query extraction guesses types before consulting the destination type
 
 - **Area:** Data
