@@ -1792,6 +1792,11 @@ fn has_bound_cors<S>(router: &Router<S>) -> bool {
 }
 
 /// Typed query extraction, enabled by the `query` feature.
+///
+/// Each value is percent-decoded text. The field type interprets that text:
+/// a string keeps the spelling, and a number or bool parses it. A missing
+/// key is absence. A supplied value is present, including the spelling `null`
+/// and an empty value.
 #[cfg(feature = "query")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Query<T>(pub T);
@@ -1847,47 +1852,43 @@ fn decode_query_component(input: &str) -> Result<String, &'static str> {
 }
 
 #[cfg(feature = "query")]
-fn query_value_as_json(value: &str) -> String {
-    if matches!(value, "true" | "false" | "null") {
-        return value.to_owned();
+fn query_pairs(query: &str) -> Result<Vec<(String, String)>, &'static str> {
+    let mut pairs = Vec::new();
+    for pair in query.split('&').filter(|pair| !pair.is_empty()) {
+        let (raw_key, raw_value) = pair.split_once('=').unwrap_or((pair, ""));
+        pairs.push((
+            decode_query_component(raw_key)?,
+            decode_query_component(raw_value)?,
+        ));
     }
-    if let Ok(number) = value.parse::<i64>() {
-        return number.to_string();
-    }
-    if let Ok(number) = value.parse::<u64>() {
-        return number.to_string();
-    }
-    if let Ok(number) = value.parse::<f64>() {
-        if number.is_finite() {
-            return number.to_string();
-        }
-    }
-    deser_json::to_string(value).expect("a string serializes")
+    Ok(pairs)
 }
 
 #[cfg(feature = "query")]
-/// Convert URL-encoded query pairs into a JSON object.
-///
-/// The query extractor decodes through JSON rather than form encoding. Query
-/// values that are valid JSON primitives retain their primitive type so typed
-/// extractors such as `Query<Filters { page: u32 }>` continue to work.
-fn query_as_json(query: &str) -> Result<String, &'static str> {
-    let mut output = String::from("{");
-    let mut has_pair = false;
-    for pair in query.split('&').filter(|pair| !pair.is_empty()) {
-        let (raw_key, raw_value) = pair.split_once('=').unwrap_or((pair, ""));
-        let key = decode_query_component(raw_key)?;
-        let value = decode_query_component(raw_value)?;
-        if has_pair {
-            output.push(',');
+struct QueryParams {
+    pairs: Vec<(String, String)>,
+}
+
+#[cfg(feature = "query")]
+impl<'de> deser::de::Deserializer<'de> for QueryParams {
+    fn drive(
+        &mut self,
+        driver: &mut deser::de::DeserializeDriver<'_, 'de>,
+    ) -> Result<(), deser::Error> {
+        driver.emit(deser::Event::map_start())?;
+        for (key, value) in std::mem::take(&mut self.pairs) {
+            driver.emit(deser::Atom::Str(deser::Text::owned(key)))?;
+            driver.emit(deser::Atom::Lexical(deser::Text::owned(value)))?;
         }
-        has_pair = true;
-        output.push_str(&deser_json::to_string(key.as_str()).expect("a string serializes"));
-        output.push(':');
-        output.push_str(&query_value_as_json(&value));
+        driver.emit(deser::Event::MapEnd)
     }
-    output.push('}');
-    Ok(output)
+}
+
+#[cfg(feature = "query")]
+fn read_query<T: deser::de::DeserializeOwned>(query: &str) -> Result<T, String> {
+    let pairs = query_pairs(query).map_err(str::to_owned)?;
+    deser::de::Deserializer::deserialize(&mut QueryParams { pairs })
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(feature = "query")]
@@ -1905,8 +1906,7 @@ where
     ) -> ExtractFuture<Self, Self::Rejection> {
         let query = request.uri().query().unwrap_or_default().to_owned();
         Box::pin(async move {
-            query_as_json(&query)
-                .and_then(|json| deser_json::from_str(&json).map_err(|_| "invalid query"))
+            read_query(&query)
                 .map(|value| (Self(value), request))
                 .map_err(|error| {
                     Rejection::new(StatusCode::BAD_REQUEST, format!("invalid query: {error}"))
@@ -3399,6 +3399,98 @@ mod tests {
             .unwrap();
         let response = block_on(router.call(request));
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[cfg(feature = "query")]
+    #[test]
+    fn query_strings_keep_scalar_spellings() {
+        #[derive(deser::Deserialize)]
+        struct Text {
+            text: String,
+        }
+        #[derive(deser::Deserialize)]
+        struct OptionalText {
+            text: Option<String>,
+        }
+        #[derive(deser::Deserialize)]
+        struct OptionalPage {
+            page: Option<u32>,
+        }
+
+        let text = Router::<()>::new().route(
+            "/search",
+            get(|Query(text): Query<Text>| async move { text.text }),
+        );
+        for spelling in ["hello", "123", "00123", "true", "false", "null", ""] {
+            let request = Request::get(format!("/search?text={spelling}"))
+                .body(h12tiny_util::empty_body())
+                .unwrap();
+            let response = block_on(text.call(request));
+            assert_eq!(response.status(), StatusCode::OK, "{spelling:?}");
+            let body = block_on(response.into_body().collect()).unwrap().to_bytes();
+            assert_eq!(&body[..], spelling.as_bytes(), "{spelling:?}");
+        }
+
+        let optional = Router::<()>::new().route(
+            "/search",
+            get(|Query(text): Query<OptionalText>| async move { format!("{:?}", text.text) }),
+        );
+        for (query, expected) in [
+            ("/search?text=null", "Some(\"null\")"),
+            ("/search?text=123", "Some(\"123\")"),
+            ("/search?text=00123", "Some(\"00123\")"),
+            ("/search?text=true", "Some(\"true\")"),
+            ("/search?text=", "Some(\"\")"),
+            ("/search", "None"),
+        ] {
+            let response = block_on(
+                optional.call(
+                    Request::get(query)
+                        .body(h12tiny_util::empty_body())
+                        .unwrap(),
+                ),
+            );
+            assert_eq!(response.status(), StatusCode::OK, "{query}");
+            let body = block_on(response.into_body().collect()).unwrap().to_bytes();
+            assert_eq!(&body[..], expected.as_bytes(), "{query}");
+        }
+
+        let page = Router::<()>::new().route(
+            "/page",
+            get(|Query(page): Query<OptionalPage>| async move { format!("{:?}", page.page) }),
+        );
+        let response = block_on(
+            page.call(
+                Request::get("/page?page=00123")
+                    .body(h12tiny_util::empty_body())
+                    .unwrap(),
+            ),
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = block_on(response.into_body().collect()).unwrap().to_bytes();
+        assert_eq!(&body[..], b"Some(123)");
+
+        for query in ["/page?page=null", "/page?page=", "/page?page=true"] {
+            let response = block_on(
+                page.call(
+                    Request::get(query)
+                        .body(h12tiny_util::empty_body())
+                        .unwrap(),
+                ),
+            );
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{query}");
+        }
+
+        let response = block_on(
+            page.call(
+                Request::get("/page")
+                    .body(h12tiny_util::empty_body())
+                    .unwrap(),
+            ),
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = block_on(response.into_body().collect()).unwrap().to_bytes();
+        assert_eq!(&body[..], b"None");
     }
 
     #[cfg(feature = "json")]

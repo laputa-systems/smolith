@@ -51,10 +51,12 @@ Optional features add JSON and query extraction, SSE event
 framing and idle-only comment keepalives, structural CORS, raw upgrade access,
 and the narrow WebSocket handshake/frame boundary.
 
-The query extractor currently infers JSON scalars before deserializing. A
-numeric-looking value cannot populate a `String`, and the text `null` becomes
-absence for `Option<String>`. The backlog tracks preserving the requested
-field type and original string spelling.
+The query extractor percent-decodes each value and lets the field type
+interpret that text. A string keeps the spelling, so `123`, `00123`, `true`,
+and `null` stay text. A number or bool parses the same spelling, so `page=3`
+and `active=true` still fill those fields. A missing key is absence. A
+supplied value is present: `text=null` is `Some("null")` for `Option<String>`,
+and a non-numeric spelling is rejected for a number.
 
 SSE data frames CR, LF, and CRLF as line breaks. `Event::event` and `Event::id`
 return `Result<Event, EventFieldError>`; event names reject CR/LF, and identifiers

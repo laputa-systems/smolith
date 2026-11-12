@@ -10,7 +10,7 @@ repository = "https://github.com/laputa-systems/smolith"
 [features]
 default = []
 json = ["h12tiny-util/json", "dep:deser", "dep:deser-json"]
-query = ["dep:deser", "dep:deser-json"]
+query = ["dep:deser"]
 sse = []
 cors = []
 upgrade = ["dep:h12tiny-server", "h12tiny-server/upgrade"]

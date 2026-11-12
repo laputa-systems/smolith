@@ -20,15 +20,6 @@ Next: 27
 - **Fix with:** `single-source-of-truth`
 - **Effort:** S (hours)
 
-### H12T-23 · P2 · Query extraction guesses types before consulting the destination type
-
-- **Area:** Data
-- **Where:** `crates/h12tiny-web/src/lib.rs:1536`, `:1560`, `:1592`.
-- **Problem:** URL-decoded strings are guessed to be JSON booleans, nulls, integers, or floats before deserialization. An in-memory public-router check accepts `text=hello` for a `String`, but returns HTTP 400 for `text=123`, `text=00123`, `text=true`, and `text=null`. For `Option<String>`, explicitly supplied `text=null` silently becomes `None`. Search text and identifiers therefore change meaning or fail according to their spelling. Existing query tests exercise numeric fields and alphabetic strings, not this distinction.
-- **Recommendation:** Deserialize each decoded value according to the requested field type. Preserve exact string spellings and missing-versus-supplied optional values while retaining numeric and boolean fields. Exercise leading zeroes and scalar-looking text through the public extractor.
-- **Fix with:** `typing-audit`
-- **Effort:** M (days)
-
 ### H12T-24 · P2 · Fallible system-trust TLS builders panic on unsupported configuration
 
 - **Area:** Errors
