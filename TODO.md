@@ -1,15 +1,6 @@
 Prefix: SMOL
 Next: 13
 
-### SMOL-9 · P1 · File synchronization discards unread buffered bytes
-
-- **Area:** Data
-- **Where:** `crates/async-fs/src/lib.rs:968`, `crates/async-fs/src/lib.rs:999`, `crates/async-fs/src/lib.rs:1025`, `crates/async-fs/src/lib.rs:1084`, `crates/async-fs/src/lib.rs:1126`, `crates/blocking/src/lib.rs:709`, `crates/blocking/src/lib.rs:1107`
-- **Problem:** `sync_all()`, `sync_data()`, and `set_len()` flush the underlying `Unblock` even when it is reading. This stops the background reader and discards its read-ahead pipe. The OS cursor has advanced, but `File.read_pos` still represents the logical position and the next read does not restore it. Three real-file probes each opened `abcdef`, read `a`, called one of these methods, and then read EOF instead of `bcdef`. Even `set_len(6)`, which changes no file content, loses the unread suffix.
-- **Recommendation:** Preserve the logical read position across synchronization and truncation. Drain writes without discarding an active read buffer where possible. If read-ahead must be discarded, retain the cursor-restoration obligation in File-owned state across cancellation and complete it before another read. Reuse the existing repositioning mechanism. Test all three operations between partial reads, including cancellation during the transition.
-- **Fix with:** `lifecycle-concurrency`
-- **Effort:** M
-
 ### SMOL-6 · P2 · Waker callbacks run while internal locks are held
 
 - **Area:** Concurrency

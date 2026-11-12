@@ -38,6 +38,7 @@ use std::future::Future;
 use std::io::{self, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -869,6 +870,9 @@ pub struct File {
 
     /// Set to `true` if the file needs flushing.
     is_dirty: bool,
+
+    /// The read-ahead pipe was discarded while `read_pos` still names the logical cursor.
+    restore_read_pos: AtomicBool,
 }
 
 impl File {
@@ -882,7 +886,12 @@ impl File {
             unblock,
             read_pos,
             is_dirty,
+            restore_read_pos: AtomicBool::new(false),
         }
+    }
+
+    fn discard_read_ahead(&self) {
+        self.restore_read_pos.store(true, Ordering::Release);
     }
 
     /// Opens a file in read-only mode.
@@ -966,8 +975,11 @@ impl File {
     /// # std::io::Result::Ok(()) });
     /// ```
     pub async fn sync_all(&self) -> io::Result<()> {
-        let mut inner = self.unblock.lock().await;
-        inner.flush().await?;
+        if self.is_dirty {
+            self.discard_read_ahead();
+            let mut inner = self.unblock.lock().await;
+            inner.flush().await?;
+        }
         let file = self.file.clone();
         unblock(move || file.sync_all()).await
     }
@@ -997,8 +1009,11 @@ impl File {
     /// # std::io::Result::Ok(()) });
     /// ```
     pub async fn sync_data(&self) -> io::Result<()> {
-        let mut inner = self.unblock.lock().await;
-        inner.flush().await?;
+        if self.is_dirty {
+            self.discard_read_ahead();
+            let mut inner = self.unblock.lock().await;
+            inner.flush().await?;
+        }
         let file = self.file.clone();
         unblock(move || file.sync_data()).await
     }
@@ -1023,6 +1038,7 @@ impl File {
     /// # std::io::Result::Ok(()) });
     /// ```
     pub async fn set_len(&self, size: u64) -> io::Result<()> {
+        self.discard_read_ahead();
         let mut inner = self.unblock.lock().await;
         inner.flush().await?;
         let file = self.file.clone();
@@ -1129,6 +1145,11 @@ impl AsyncRead for File {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
+        if self.restore_read_pos.load(Ordering::Acquire) {
+            ready!(self.as_mut().poll_reposition(cx))?;
+            self.restore_read_pos.store(false, Ordering::Release);
+        }
+
         // Before reading begins, remember the current cursor position.
         if self.read_pos.is_none() {
             // Initialize the logical cursor to the current position in the file.
