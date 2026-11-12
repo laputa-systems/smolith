@@ -7,44 +7,23 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-manifest="$script_dir/../Cargo.toml"
+manifest="$script_dir/../crates/h12tiny/Cargo.toml"
 
 if [ "$#" -eq 0 ]; then
     set -- --features full
 fi
 
-tree=$(cargo tree --manifest-path "$manifest" -e normal --prefix none "$@")
+tree=$(cd / && cargo tree --manifest-path "$manifest" -e normal --prefix none "$@")
 
 # Match Cargo package names rather than substrings so `tokio-metrics` cannot
 # hide a direct `tokio` package and unrelated names do not trigger a match.
 # `libc` is permitted directly and transitively. Optional serialization
 # dependencies belong to explicit util/web features.
-forbidden='\
-tokio
-tokio-util
-native-tls
-ring
-aws-lc-rs
-aws-lc-sys
-openssl
-openssl-sys
-cc
-cmake
-bindgen
-hyper-util
-reqwest
-tower
-tower-layer
-axum
-async-trait
-url
-mime
-cookie
-socket2
-webpki-roots
-'
-
-printf '%s\n' "$forbidden" | while IFS= read -r package; do
+for package in \
+    tokio tokio-util native-tls ring aws-lc-rs aws-lc-sys openssl openssl-sys \
+    cc cmake bindgen hyper-util reqwest tower tower-layer axum async-trait \
+    url mime cookie socket2 webpki-roots
+do
     [ -n "$package" ] || continue
     if printf '%s\n' "$tree" | awk -v package="$package" '$1 == package { found = 1 } END { exit !found }'; then
         printf 'forbidden normal dependency: %s\n' "$package" >&2

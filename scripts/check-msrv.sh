@@ -17,18 +17,6 @@ json() {
     fi
 }
 
-declared_rust_version() {
-    awk '
-        $1 == "rust-version" && $2 == "=" {
-            gsub(/"/, "", $3)
-            print $3
-            found = 1
-            exit
-        }
-        END { if (!found) exit 1 }
-    ' "$1"
-}
-
 ensure_toolchain() {
     toolchain=$1
     case " $installed_toolchains " in
@@ -48,19 +36,10 @@ check() {
         exit 1
     fi
     ensure_toolchain "$version.0"
-    cargo "+$version.0" check --locked --manifest-path "$manifest" --all-features
+    (cd / && cargo "+$version.0" check --locked --manifest-path "$manifest" --all-features)
 }
 
-# The forks are excluded from the workspace and do not keep a lockfile.
-check_fork() {
-    manifest=$1
-    shift
-    version=$(declared_rust_version "$manifest")
-    ensure_toolchain "$version.0"
-    cargo "+$version.0" check --manifest-path "$manifest" "$@"
-}
-
-metadata=$(cargo metadata --no-deps --format-version 1)
+metadata=$(cd / && cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml")
 members=$(printf '%s\n' "$metadata" | json -r '.packages[] | "\(.rust_version)\t\(.manifest_path)"')
 if [ -z "$members" ]; then
     printf '%s\n' 'cargo metadata returned no workspace members' >&2
@@ -74,8 +53,7 @@ done <<EOF
 $members
 EOF
 
-check_fork crates/laputa-h2-futures-lite/Cargo.toml -p laputa-h2-futures-lite
-check_fork crates/laputa-hyper-futures-lite/Cargo.toml --features full
-check_fork crates/laputa-fastwebsockets-futures-lite/Cargo.toml
+ensure_toolchain 1.85.0
+(cd / && cargo +1.85.0 check --locked --manifest-path "$root/tests/consumer/Cargo.toml" --tests)
 
 printf '%s\n' 'minimum supported Rust version checks passed'

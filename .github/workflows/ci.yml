@@ -32,9 +32,9 @@ jobs:
           toolchain: nightly-2026-09-15
           components: rust-src, clippy
       - name: clippy
-        run: cargo clippy --workspace --all-targets
+        run: make lint
       - name: test
-        run: cargo test --workspace
+        run: make test
       - name: python tool tests
         run: python3 -m unittest discover -s tests -p 'test_*.py' --verbose
       - name: feature and target check
@@ -45,7 +45,7 @@ jobs:
         run: tools/advisory-scan.sh
 
   consumer-and-fixture:
-    name: consumer and h12tiny fixture
+    name: consumer and HTTP gates
     runs-on: ubuntu-26.04-arm
     steps:
       - name: checkout
@@ -57,8 +57,10 @@ jobs:
           components: rust-src, clippy
       - name: external consumer
         run: tests/consumer/check.sh
-      - name: h12tiny fixture
-        run: fixtures/h12tiny.sh
+      - name: HTTP feature isolation
+        run: sh scripts/check-features.sh
+      - name: HTTP normal dependencies
+        run: sh scripts/check-normal-dependencies.sh
 
   package:
     name: staging registry package
@@ -181,8 +183,8 @@ jobs:
       - name: close during force_push
         run: RUSTFLAGS='--cfg loom' cargo test --locked -p laputa-concurrent-queue --features loom --test loom close_during_force_push -- --test-threads=1
 
-  msrv:
-    name: rust 1.85
+  protocol:
+    name: protocol parity
     runs-on: ubuntu-26.04-arm
     steps:
       - name: checkout
@@ -190,8 +192,23 @@ jobs:
       - name: toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: 1.85.0
-      - name: workspace libraries
-        run: cargo +1.85.0 check --workspace --lib --locked
-      - name: consumer
-        run: cargo +1.85.0 check --locked --manifest-path tests/consumer/Cargo.toml --tests
+          toolchain: nightly-2026-09-15
+          components: rust-src, clippy
+      - name: fork suites
+        run: sh scripts/verify-protocols.sh
+      - name: ledger
+        run: sh scripts/verify-protocols.sh --check-ledger
+
+  msrv:
+    name: package rust-version
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src
+      - name: declared rust-version
+        run: sh scripts/check-msrv.sh

@@ -15,7 +15,7 @@ H2_MANIFEST="crates/laputa-h2-futures-lite/Cargo.toml"
 HYPER_MANIFEST="crates/laputa-hyper-futures-lite/Cargo.toml"
 WS_MANIFEST="crates/laputa-fastwebsockets-futures-lite/Cargo.toml"
 SUPPORT_MANIFEST="crates/laputa-protocol-test-support/Cargo.toml"
-LEDGER="docs/fork-test-parity.md"
+LEDGER="docs/h12tiny/fork-test-parity.md"
 
 selected_suites=""
 check_ledger=0
@@ -244,7 +244,7 @@ if is_selected h2-flow; then
     run_tests h2-flow cargo test --manifest-path "$H2_MANIFEST" --test flow_control_futures
 fi
 if is_selected h2-inherited; then
-    run_tests h2-inherited cargo test --manifest-path "$H2_MANIFEST" -p h2-tests
+    run_tests h2-inherited cargo test -p h2-tests
 fi
 if is_selected hyper-check; then
     run_check hyper-check cargo check --manifest-path "$HYPER_MANIFEST" --features full

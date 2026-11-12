@@ -6,6 +6,10 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
+cargo() {
+    (cd / && command cargo --manifest-path "$root/Cargo.toml" "$@")
+}
+
 tree() {
     cargo tree "$@" -e normal --prefix none
 }
