@@ -10,15 +10,6 @@ Next: 14
 - **Fix with:** `stuff-registries`
 - **Effort:** S
 
-### SMOL-11 · P2 · Floating-point range helpers return excluded endpoints
-
-- **Area:** Types
-- **Where:** `crates/fastrand-contrib/src/float_range.rs:124`, `crates/fastrand-contrib/src/float_range.rs:143`, `crates/fastrand-contrib/src/float_range.rs:160`, `crates/fastrand-contrib/src/lib.rs:156`
-- **Problem:** Multiplying a sample by the interval width and adding its lower bound can round up to an excluded upper endpoint. This violates the public range contract for valid nonempty ranges. With `Rng::with_seed(42)` and an upper bound one representable float above `1.0`, both `f32_range(1.0..upper)` and `f64_range(1.0..upper)` returned the excluded endpoint in 60 of the first 100 samples. Both current library sources were compiled unchanged for the probe. Existing tests sample broad ranges and miss adjacent representable values.
-- **Recommendation:** Make endpoint inclusion hold after floating-point rounding for both widths and both scaling paths. Add adjacent-value, signed-zero, subnormal, and wide-range cases that assert the actual RangeBounds contract. Define rejection of empty or non-finite input separately from correcting valid finite ranges; avoid an unbounded rejection loop when no representable sample exists.
-- **Fix with:** `typing-audit`
-- **Effort:** S
-
 ### SMOL-12 · P3 · Ordered timer storage shifts the whole queue during cancellation
 
 - **Area:** Performance

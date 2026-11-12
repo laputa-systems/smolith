@@ -1,3 +1,4 @@
+use core::cmp::{PartialEq, PartialOrd};
 use core::ops::{Add, Bound, Div, Mul, Neg, RangeBounds, Sub};
 
 use crate::BaseRng;
@@ -16,6 +17,8 @@ trait FloatExt:
     + Mul<Self, Output = Self>
     + Div<Self, Output = Self>
     + Neg<Output = Self>
+    + PartialEq
+    + PartialOrd
     + Copy
     + Sized
 {
@@ -24,6 +27,8 @@ trait FloatExt:
     const HALF: Self;
 
     fn is_finite(self) -> bool;
+    fn next_up(self) -> Self;
+    fn next_down(self) -> Self;
     /// Generate a random float in [0, 1) range.
     fn gen_close_01_open(rng: &mut impl BaseRng) -> Self;
     /// Generate a random float in (0, 1] range.
@@ -36,7 +41,7 @@ trait FloatExt:
 }
 
 macro_rules! impl_float_ext {
-    ($float:ident, $max_rand_bits:literal) => {
+    ($float:ident, $bits:ident, $max_rand_bits:literal) => {
         impl FloatExt for $float {
             const MIN: Self = $float::MIN;
             const MAX: Self = $float::MAX;
@@ -45,6 +50,29 @@ macro_rules! impl_float_ext {
             #[inline]
             fn is_finite(self) -> bool {
                 $float::is_finite(self)
+            }
+            #[inline]
+            fn next_up(self) -> Self {
+                let bits = self.to_bits();
+                if self.is_nan() || bits == $float::INFINITY.to_bits() {
+                    return self;
+                }
+                let magnitude = bits & ($bits::MAX >> 1);
+                let next = if magnitude == 0 {
+                    1
+                } else if bits == magnitude {
+                    bits + 1
+                } else {
+                    bits - 1
+                };
+                $float::from_bits(next)
+            }
+            #[inline]
+            fn next_down(self) -> Self {
+                if self.is_nan() || self.to_bits() == $float::NEG_INFINITY.to_bits() {
+                    return self;
+                }
+                (-(-self).next_up())
             }
             #[inline]
             fn gen_close_01_open(rng: &mut impl BaseRng) -> Self {
@@ -90,8 +118,8 @@ macro_rules! impl_float_ext {
 // let max_rand = f32::from_bits(((u32::MAX >> discard_bits) | (exponent_bias << fraction_bits))) - 1.0;
 // ```
 
-impl_float_ext!(f32, 0x3f7ffffe);
-impl_float_ext!(f64, 0x3feffffffffffffe);
+impl_float_ext!(f32, u32, 0x3f7ffffe);
+impl_float_ext!(f64, u64, 0x3feffffffffffffe);
 
 /// Indication whether a range is exclusive, inclusive on either side or
 /// inclusive on both sides. `Bound::Unbounded` is treated as inclusive, because
@@ -104,7 +132,7 @@ enum Inclusive {
 }
 
 impl Inclusive {
-    fn from_bounds<T>(range: impl RangeBounds<T>) -> Self {
+    fn from_bounds<T>(range: &impl RangeBounds<T>) -> Self {
         match (range.start_bound(), range.end_bound()) {
             (Bound::Excluded(_), Bound::Excluded(_)) => Inclusive::None,
             (Bound::Included(_), Bound::Excluded(_)) | (Bound::Unbounded, Bound::Excluded(_)) => {
@@ -122,6 +150,58 @@ impl Inclusive {
 }
 
 fn float_range_impl<T: FloatExt>(rng: &mut impl BaseRng, range: impl RangeBounds<T>) -> T {
+    let low = match range.start_bound() {
+        Bound::Included(&low) | Bound::Excluded(&low) => low,
+        Bound::Unbounded => T::MIN,
+    };
+    let high = match range.end_bound() {
+        Bound::Included(&high) | Bound::Excluded(&high) => high,
+        Bound::Unbounded => T::MAX,
+    };
+    if !low.is_finite() || !high.is_finite() {
+        panic!("float range bounds must be finite");
+    }
+    let lower = match range.start_bound() {
+        Bound::Excluded(_) => {
+            let next = low.next_up();
+            if next.is_finite() {
+                Some(next)
+            } else {
+                None
+            }
+        }
+        _ => Some(low),
+    };
+    let upper = match range.end_bound() {
+        Bound::Excluded(_) => {
+            let next = high.next_down();
+            if next.is_finite() {
+                Some(next)
+            } else {
+                None
+            }
+        }
+        _ => Some(high),
+    };
+    let (Some(lower), Some(upper)) = (lower, upper) else {
+        panic!("float range is empty");
+    };
+    if lower > upper {
+        panic!("float range is empty");
+    }
+    if lower == upper {
+        return lower;
+    }
+    for _ in 0..128 {
+        let sample = sample_float_range(rng, &range);
+        if lower <= sample && sample <= upper {
+            return sample;
+        }
+    }
+    lower
+}
+
+fn sample_float_range<T: FloatExt, R: RangeBounds<T>>(rng: &mut impl BaseRng, range: &R) -> T {
     let low = match range.start_bound() {
         Bound::Included(&low) | Bound::Excluded(&low) => low,
         Bound::Unbounded => T::MIN,
@@ -207,6 +287,8 @@ fn float_range_impl<T: FloatExt>(rng: &mut impl BaseRng, range: impl RangeBounds
 
 #[cfg(test)]
 mod tests {
+    use core::ops::RangeBounds;
+
     use fastrand::Rng;
 
     use super::*;
@@ -239,5 +321,51 @@ mod tests {
         for _ in 0..10000 {
             assert!(&float_range_impl::<f32>(&mut rng, range).is_finite());
         }
+    }
+
+    fn assert_in_range<T>(range: impl RangeBounds<T> + Clone, mut samples: impl FnMut() -> T)
+    where
+        T: PartialOrd + core::fmt::Debug,
+    {
+        for _ in 0..200 {
+            let sample = samples();
+            assert!(range.contains(&sample), "{:?}", sample);
+        }
+    }
+
+    #[test]
+    fn adjacent_endpoint_is_excluded() {
+        let upper32 = f32::from_bits(1.0f32.to_bits() + 1);
+        let upper64 = f64::from_bits(1.0f64.to_bits() + 1);
+        let mut rng = Rng::with_seed(42);
+        assert_in_range(1.0f32..upper32, || float_range_impl(&mut rng, 1.0..upper32));
+        assert_in_range(1.0f64..upper64, || float_range_impl(&mut rng, 1.0..upper64));
+    }
+
+    #[test]
+    fn signed_zero_subnormal_and_wide_ranges_stay_inside() {
+        let mut rng = Rng::with_seed(7);
+        assert_in_range(-1.0f32..0.0, || float_range_impl(&mut rng, -1.0..0.0));
+        let low = f32::from_bits(1);
+        let high = f32::from_bits(4);
+        assert_in_range(low..high, || float_range_impl(&mut rng, low..high));
+        assert_in_range(f64::MIN..f64::MAX, || {
+            float_range_impl(&mut rng, f64::MIN..f64::MAX)
+        });
+        let sample = float_range_impl(&mut rng, -0.0f64..=0.0);
+        assert!(sample == 0.0);
+    }
+
+    #[test]
+    fn empty_and_non_finite_ranges_panic() {
+        let mut rng = Rng::with_seed(1);
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            float_range_impl(&mut rng, 1.0f32..1.0)
+        }))
+        .is_err());
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            float_range_impl(&mut rng, f32::NAN..1.0)
+        }))
+        .is_err());
     }
 }
