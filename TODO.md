@@ -1,47 +1,74 @@
 Prefix: SMOL
-Next: 7
+Next: 13
 
-### SMOL-2 · P1 · Miri and Loom cover a sliver of the unsafe and lock surface
-
-- **Area:** Tests
-- **Where:** `.github/workflows/ci.yml:147-177`, `crates/async-lock/src/rwlock.rs:120`, `crates/event-listener/src/intrusive.rs:194`, `crates/polling/src/poll.rs:79`
-- **Problem:** CI proves Miri on four `async-task` tests plus executor `shutdown_test`, and Loom on one `concurrent-queue` close test. No Miri for `async-lock`, `event-listener` intrusive list, `concurrent-queue` bounded/unbounded, `blocking`, or `polling`; no Loom for `async-lock`/`event-listener-strategy`. The dense `SAFETY:` comments in `rwlock.rs`, `intrusive.rs`, and `poll.rs` name behaviors with no check.
-- **Recommendation:** Enumerate the named unsafe/lock behaviors (rwlock downgrade/upgrade, intrusive link insert/remove, queue close-vs-push) and add one Miri plus one Loom test per behavior.
-- **Fix with:** `renovate-tests`
-- **Effort:** M
-
-### SMOL-3 · P2 · Blocking pool silently falls back, caches first, and hides errors
-
-- **Area:** Config
-- **Where:** `crates/blocking/src/lib.rs:15`, `crates/blocking/src/lib.rs:234`, `crates/blocking/src/lib.rs:340`, `crates/blocking/src/lib.rs:361`, `crates/blocking/src/lib.rs:575`
-- **Problem:** Invalid `BLOCKING_MAX_THREADS` (`""`, non-integer, `0`, `50000`) silently becomes a clamped default with no log or `Result`. The value is cached on first `grow_pool` via `get_or_insert_with`, so later env or setter changes do not re-read. `schedule` pushes onto an unbounded `VecDeque` with thread growth as the only backpressure. `main_loop` discards panic payloads with `.ok()`, and `get_mut`/`with_mut` discard `poll_stop` I/O errors with `.ok()` before assuming idle.
-- **Recommendation:** Parse once into a validated config with a loud fallback, inject it instead of reading env inside `max_threads`, bound or observe the queue, and propagate `poll_stop` errors and panic payloads.
-- **Fix with:** `isolate-effects`
-- **Effort:** M
-
-### SMOL-4 · P2 · Async-io reactor is a global singleton with wall-clock logic and abort-or-swallow errors
+### SMOL-3 · P1 · Accessing an Unblock handle erases pending write failures
 
 - **Area:** Errors
-- **Where:** `crates/async-io/src/reactor.rs:90`, `crates/async-io/src/reactor.rs:180`, `crates/async-io/src/reactor.rs:210`, `crates/async-io/src/driver.rs:29`, `crates/async-io/src/driver.rs:70`
-- **Problem:** Timer expiry and `react` timeout math read `Instant::now()` and `Reactor::get()` directly, so deterministic tests are impossible. Poisoned mutexes, `poller.notify()`, and driver-thread spawn use `expect` and abort the process, while `react(...).ok()` in `main_loop` and `block_on` silently drops real reactor `io::Error`s (only `Interrupted` is handled).
-- **Recommendation:** Inject a clock/timer trait into `Timer`/`Reactor`, convert `expect` on poison/notify/spawn to typed errors or documented aborts, and surface `react` errors to callers or a hook.
+- **Where:** `crates/blocking/src/lib.rs:574`, `crates/blocking/src/lib.rs:608`, `crates/blocking/src/lib.rs:721`, `crates/blocking/src/lib.rs:1082`
+- **Problem:** `get_mut()` and `with_mut()` discard the error returned by `poll_stop()` after it restores `State::Idle`. A subsequent flush can succeed although previously accepted bytes never reached the inner writer. Reproduced with `Unblock::with_capacity(64, writer)`, where `writer.write()` always fails and `writer.flush()` succeeds: `write_all(b"lost data")`, either accessor, and `flush()` all return successfully. Neither accessor documents discarding pending write errors. The caller has followed the documented flush-before-drop requirement.
+- **Recommendation:** Preserve a background write or flush error in the existing pending-error state when an accessor stops the task, then return it from the next write, flush, or close. Keep the accessor signatures. Cover write → get_mut/with_mut → flush with a failing inner writer, and keep extraction's flush-before-handoff contract explicit.
 - **Fix with:** `error-model`
+- **Effort:** S
+
+### SMOL-9 · P1 · File synchronization discards unread buffered bytes
+
+- **Area:** Data
+- **Where:** `crates/async-fs/src/lib.rs:968`, `crates/async-fs/src/lib.rs:999`, `crates/async-fs/src/lib.rs:1025`, `crates/async-fs/src/lib.rs:1084`, `crates/async-fs/src/lib.rs:1126`, `crates/blocking/src/lib.rs:709`, `crates/blocking/src/lib.rs:1107`
+- **Problem:** `sync_all()`, `sync_data()`, and `set_len()` flush the underlying `Unblock` even when it is reading. This stops the background reader and discards its read-ahead pipe. The OS cursor has advanced, but `File.read_pos` still represents the logical position and the next read does not restore it. Three real-file probes each opened `abcdef`, read `a`, called one of these methods, and then read EOF instead of `bcdef`. Even `set_len(6)`, which changes no file content, loses the unread suffix.
+- **Recommendation:** Preserve the logical read position across synchronization and truncation. Drain writes without discarding an active read buffer where possible. If read-ahead must be discarded, retain the cursor-restoration obligation in File-owned state across cancellation and complete it before another read. Reuse the existing repositioning mechanism. Test all three operations between partial reads, including cancellation during the transition.
+- **Fix with:** `lifecycle-concurrency`
 - **Effort:** M
 
-### SMOL-5 · P2 · Raw-fd registration and ambient process env push safety to callers
+### SMOL-7 · P1 · Release registry preflight rejects the committed source replacement
 
-- **Area:** Security
-- **Where:** `crates/polling/src/lib.rs:519`, `crates/polling/src/lib.rs:538`, `crates/async-process/src/lib.rs:709-757`
-- **Problem:** `Poller::add`/`add_with_mode` are `unsafe` over raw fds with a use-after-close or fd-reuse hazard re-implemented per backend (epoll/kqueue/port/poll); there is no owned-fd wrapper where most callers live, and h12tiny inherits this through async-io. `async-process::Command` wraps `std::process::Command` with ambient `PATH` resolution and inherited env, and the crate docs demonstrate `sh -c`, so downstream use with untrusted args is one copy-paste from injection or PATH hijack.
-- **Recommendation:** Provide an owned-fd registration API and keep raw `unsafe` for the integer-fd escape hatch; document the `Command` trust contract at `Command::new` with an argv-without-shell example.
-- **Fix with:** `os-boundaries`
+- **Area:** Build
+- **Where:** `.cargo/config.toml:1`, `Makefile:9`, `scripts/bump_minor_release.sh:158`, `scripts/bump_minor_release.sh:270`, `scripts/bump_minor_release.sh:308`, `scripts/bump_minor_release.sh:479`
+- **Problem:** The Cargo configuration replaces crates.io with the `stuff` sparse source, but the public release phase queries its registry implicitly. From this checkout, `CARGO_NET_OFFLINE=true cargo search laputa-smol --limit 1` exits 101 because source replacement requires an explicit registry. The unchanged release script reproduces that failure before any version edit or publication. The subsequent ownership and publish commands also leave their registry implicit. `make publish` therefore cannot reach either its public phase or the separate private phase.
+- **Recommendation:** Give the public phase one explicit crates.io registry selection and apply it consistently to search, ownership checks, dry runs, and uploads. Keep dependency source replacement separate from upload destination, and preserve `stuff publish cargo ... --registry mycrates` as the private phase. Test release preflight with the committed Cargo configuration in a disposable checkout without publishing.
+- **Fix with:** `single-source-of-truth`
+- **Effort:** S
+
+### SMOL-8 · P1 · Release preflight dirties its own checkout and rejects it
+
+- **Area:** Build
+- **Where:** `scripts/bump_minor_release.sh:358`, `scripts/bump_minor_release.sh:395`, `scripts/bump_minor_release.sh:497`, `scripts/bump_minor_release.sh:536`, `tools/release_graph.py:6`, `.gitignore:1`
+- **Problem:** Release graph queries import `identity` before the release script checks for a clean tree. With normal Python defaults, this creates unignored `tools/__pycache__/`. In a clean disposable clone, `python3 tools/release_graph.py version` prints `0.3.0`, then `git status --porcelain=v1` reports that directory. Running the unchanged release script with only registry queries stubbed succeeds through those queries and then exits with `release requires a clean working tree`; no tracked files change. This independently blocks a release or resume after the registry-query defect is repaired.
+- **Recommendation:** Suppress or redirect bytecode for these tooling entry points, or intentionally ignore their cache directories. Keep rejection of unrelated untracked user files. Exercise release preflight from a clean clone with normal Python defaults and no user-global Git ignore rules.
+- **Fix with:** `isolate-effects`
+- **Effort:** S
+
+### SMOL-6 · P2 · Waker callbacks run while internal locks are held
+
+- **Area:** Concurrency
+- **Where:** `crates/event-listener/src/intrusive.rs:137`, `crates/event-listener/src/intrusive.rs:225`, `crates/event-listener/src/intrusive.rs:347`, `crates/async-executor/src/lib.rs:891`, `crates/async-executor/src/lib.rs:906`, `crates/async-executor/src/lib.rs:1038`, `crates/async-io/src/reactor.rs:685`, `crates/async-io/src/reactor.rs:730`, `crates/async-broadcast/src/lib.rs:728`
+- **Problem:** Safe user wakers can reenter the library while it holds a non-reentrant mutex. Three real-crate probes deadlock: poll an Event listener with a waker that calls `event.listen()`, then notify it; drop a pending `Executor::tick()` whose final waker destructor spawns on that executor; or drop a registered `Async<UdpSocket>::readable()` future whose final waker destructor calls `poll_writable()` on that socket. Each probe reaches its callback and cannot return. Event/executor controls that remove only callback reentry complete. Waker replacement also destroys old wakers under these locks. The broadcast channel additionally holds its outer channel mutex while notifying listeners.
+- **Recommendation:** Complete state changes while locked, extract callbacks and retired wakers, then invoke or destroy them after releasing every relevant lock. Account for clone, replacement, wake, and final drop, including callers' outer locks. Preserve notification propagation and executor publication accounting. Add safe reentrant-waker regressions for event notification, ticker cancellation, and readiness replacement/cancellation.
+- **Fix with:** `lifecycle-concurrency`
 - **Effort:** M
 
-### SMOL-6 · P2 · Same wake, flush, and lifetime classes recur with only point-fix tests
+### SMOL-10 · P2 · Broadcast admission changes leave pending senders asleep
 
-- **Area:** Tests
-- **Where:** `crates/async-lock/src/rwlock.rs:120`, `crates/event-listener-strategy/src/lib.rs:483`, `crates/polling/src/poll.rs:79`
-- **Problem:** `git log` shows the same fix shape 3-5 times in a row: wake/notify under lock, blocking write/flush accounting, task shutdown/detach/waker lifetime. Each adds one narrow test. Nothing makes the class impossible: no guard fails on `MutexGuard` held across `wake`/`notify`/`execute`, no flush-state model, no shutdown-transition table. The `should never be None` and `we hold the lock` comments name invariants nothing checks, and fork-adjacent `XXX`/`T_T` notes have no ticket link.
-- **Recommendation:** Add one class-level guard per family (lock-held wake audit, flush-after-write sequence model, shutdown-transition table) instead of the next point fix; convert the top `never`/`assume` comments into `debug_assert!` plus a named test.
-- **Fix with:** `test-audit`
+- **Area:** Concurrency
+- **Where:** `crates/async-broadcast/src/lib.rs:274`, `crates/async-broadcast/src/lib.rs:394`, `crates/async-broadcast/src/lib.rs:434`, `crates/async-broadcast/src/lib.rs:631`, `crates/async-broadcast/src/lib.rs:1748`, `crates/async-broadcast/src/lib.rs:1896`
+- **Problem:** A blocked broadcast waits on `send_ops`, but four public transitions change its result without notifying that event: adding the first active receiver with `Sender::new_receiver()`, increasing a full channel's capacity, enabling overflow, or disabling `await_active` while all receivers are inactive. Counting-waker probes registered a pending send before each transition. All four delivered zero wakes although a forced repoll immediately returned Ready. The control, `InactiveReceiver::activate_cloned()`, delivered one wake. An executor can therefore leave a now-ready sender asleep indefinitely.
+- **Recommendation:** Centralize admission-change notifications across Sender, Receiver, and InactiveReceiver. Notify when a transition permits progress or yields an error, dispatch outside the channel mutex, and retain chaining for multiple waiting senders. Add a public-API table test for the four transitions using a counting waker.
+- **Fix with:** `lifecycle-concurrency`
+- **Effort:** M
+
+### SMOL-11 · P2 · Floating-point range helpers return excluded endpoints
+
+- **Area:** Types
+- **Where:** `crates/fastrand-contrib/src/float_range.rs:124`, `crates/fastrand-contrib/src/float_range.rs:143`, `crates/fastrand-contrib/src/float_range.rs:160`, `crates/fastrand-contrib/src/lib.rs:156`
+- **Problem:** Multiplying a sample by the interval width and adding its lower bound can round up to an excluded upper endpoint. This violates the public range contract for valid nonempty ranges. With `Rng::with_seed(42)` and an upper bound one representable float above `1.0`, both `f32_range(1.0..upper)` and `f64_range(1.0..upper)` returned the excluded endpoint in 60 of the first 100 samples. Both current library sources were compiled unchanged for the probe. Existing tests sample broad ranges and miss adjacent representable values.
+- **Recommendation:** Make endpoint inclusion hold after floating-point rounding for both widths and both scaling paths. Add adjacent-value, signed-zero, subnormal, and wide-range cases that assert the actual RangeBounds contract. Define rejection of empty or non-finite input separately from correcting valid finite ranges; avoid an unbounded rejection loop when no representable sample exists.
+- **Fix with:** `typing-audit`
+- **Effort:** S
+
+### SMOL-12 · P3 · Ordered timer storage shifts the whole queue during cancellation
+
+- **Area:** Performance
+- **Where:** `crates/async-io/src/reactor.rs:199`, `crates/async-io/src/reactor.rs:369`, `crates/async-io/src/reactor.rs:387`, `crates/async-io/src/reactor.rs:396`, `crates/async-io/src/reactor.rs:410`, `crates/async-io/benches/timer.rs:13`
+- **Problem:** Commit `a7a3d7e` replaced the ordered timer map with an FxHashMap plus a sorted Vec. Each interior insertion or removal shifts the Vec while holding the global timer mutex; expiring a prefix shifts the remaining timers. Cancelling N live timers in deadline order therefore moves a quadratic number of keys. This is source-proven scaling cost, not a measured latency regression. The existing registration benchmark uses one-second timers, so a large setup can expire before the timed region and does not establish cancellation cost with a stable live set.
+- **Recommendation:** Measure a fixed, still-live timer set through registration, out-of-order insertion, cancellation, and expiry against the previous ordered-map implementation. Restore logarithmic ordered updates or choose an equivalent structure if representative workloads confirm the cost. Keep equal-deadline ordering and cancellation semantics, and report live counts and completed work alongside timings.
+- **Fix with:** `make-it-fast`
 - **Effort:** M

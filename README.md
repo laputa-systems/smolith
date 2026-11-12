@@ -4,7 +4,7 @@ smolith is the smol async runtime and the crates it is built from. The facade pa
 
 The other packages are `laputa-<upstream-name>` and keep the original library names. `UPSTREAM.toml` records each upstream repository, commit, and version.
 
-These crates are not on crates.io. Depend on a checkout.
+The dependency example below uses a checkout.
 
 ## Add the runtime
 

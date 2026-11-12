@@ -1,7 +1,11 @@
 # Security
 
-Report a vulnerability in this repository through [GitHub private advisories](https://github.com/laputa-systems/smolith/security/advisories/new). A vulnerability that is not fixed yet does not belong in a public issue.
+Report a vulnerability through [GitHub private advisories](https://github.com/laputa-systems/smolith/security/advisories/new). An unfixed vulnerability does not belong in a public issue.
 
-Published crates are named `laputa-<upstream-name>`. RustSec records the upstream crate name. [`UPSTREAM.toml`](UPSTREAM.toml) maps each `upstream_name` and `upstream_version` to the `laputa-*` package. Matching only the renamed packages is not a scan: those names are absent from the advisory database. `tools/advisory-scan.sh` checks every component at its upstream version, then checks registry packages reached by a normal or build dependency under any feature set. An opt-in feature still counts as production. Dev-only hits are printed and do not fail the scan. The scan refreshes the advisory database and prints its revision and commit date. `--offline` reuses the checkout already present and says so.
+## Advisory checks
 
-`laputa-event-listener` tracks event-listener 5.4.2, which is outside [RUSTSEC-2026-0221](https://rustsec.org/advisories/RUSTSEC-2026-0221) (`>= 5.1.0, < 5.4.2`). The advisory database has no entry for `concurrent-queue`. `laputa-concurrent-queue` tracks concurrent-queue 2.5.0. [RUSTSEC-2021-0145](https://rustsec.org/advisories/RUSTSEC-2021-0145) is an informational Windows-only report against `atty`, reached from the `criterion` dev-dependency, not from a published Laputa crate.
+The packages are named `laputa-<upstream-name>`, while RustSec records their upstream names. [UPSTREAM.toml](UPSTREAM.toml) owns that mapping and the imported versions. Scanning only the renamed packages misses those upstream advisories.
+
+`tools/advisory-scan.sh` checks the mapped upstream versions and locked registry dependencies. Normal and build dependencies reached with all features count as production, including opt-in features. Vulnerabilities and unsound advisories affecting the scanner's Linux/macOS/Unix scope fail the scan. Dev-only, other informational, and other-platform matches are printed without failing it.
+
+The scan refreshes the advisory database and prints its revision and commit date. `--offline` uses the existing database checkout and labels that choice; it does not supply uncached Cargo dependencies. [docs/LEDGER.md](docs/LEDGER.md) is a historical advisory and upstream-issue snapshot, not the result of a current scan. Imported version checks also do not establish that local modifications are sound.

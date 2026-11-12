@@ -1,25 +1,25 @@
 # Platforms
 
-The development toolchain is `nightly-2026-09-15` from `rust-toolchain.toml`. The workspace `rust-version` is 1.85.
+[rust-toolchain.toml](../rust-toolchain.toml) pins the development toolchain. [Cargo.toml](../Cargo.toml) owns the workspace minimum Rust version.
 
-## Recorded results
+## Recorded results and current checks
 
-macOS aarch64 runs `cargo test --workspace`. Linux glibc aarch64 ran the same command in Docker on this nightly.
+Earlier recorded runs passed `cargo test --workspace` on macOS aarch64 and Linux glibc aarch64. The recorded musl aarch64 run excluded `laputa-smol` because its examples then required OpenSSL. Those dependencies and examples have since been removed; that historical exclusion is not a current OpenSSL requirement. A new full musl run is still needed.
 
-Linux musl aarch64 runs `cargo test --workspace --exclude laputa-smol`. The full workspace does not build there: `openssl-sys` has no musl sysroot, and that crate is a dev-dependency of `laputa-smol`. `laputa-smol` tests did not run on musl.
+For x86_64 musl, the workflow checks workspace libraries and tests excluding `laputa-smol`, then checks the facade library separately. These are compile checks. Cross-compilation needs a C compiler for the selected target wherever a dependency builds C code. A host's `musl-gcc` name alone does not establish its target architecture.
 
-Linux musl x86_64 is compile-only on this host. `cargo check --workspace --lib --tests --target x86_64-unknown-linux-musl --exclude laputa-smol` is the check that fits. That check needs a musl C compiler. CI installs `musl-tools` and sets `CC_x86_64_unknown_linux_musl` to `musl-gcc`. `cargo check -p laputa-smol --lib --target x86_64-unknown-linux-musl` builds the facade library.
+The recorded Linux glibc aarch64 sanitizer runs covered `wake_during_drop` with AddressSanitizer and `close_survives_force_push` with ThreadSanitizer, both using `-Zbuild-std`. Darwin sanitizers were not run. These narrow results do not qualify the entire runtime under sanitizers.
 
-On Linux glibc aarch64, AddressSanitizer covered `wake_during_drop` and ThreadSanitizer covered `close_survives_force_push`, both with `-Zbuild-std`. Darwin sanitizers were not run.
-
-A Windows target hits `compile_error!` in `crates/polling/src/lib.rs`, `crates/async-io/src/reactor.rs`, and `crates/async-signal/src/lib.rs`.
+Windows is unsupported. Its target reaches `compile_error!` in polling, async-io, and async-signal.
 
 ## h12tiny
 
-`fixtures/h12tiny.toml` pins the fixture commit. `fixtures/h12tiny.sh` clones that commit, retargets the smol edges at these crates, and runs the HTTP, TLS, cancellation, reuse, timeout, and shutdown gates. The backpressure tests live in tokio harnesses outside that workspace. `fixtures/h12tiny.py` records that gate as a gap and does not treat it as a pass.
+[fixtures/h12tiny.toml](../fixtures/h12tiny.toml) pins the consumer revision. `fixtures/h12tiny.sh` retargets its runtime edges to this checkout and runs the HTTP, TLS, cancellation, reuse, timeout, and shutdown gates. `H12TINY_MIRROR` selects the clone source.
 
-## Still needs a machine
+The fixture's backpressure tests live in Tokio harnesses outside that workspace. `fixtures/h12tiny.py` records that gate as a gap rather than a pass.
 
-- BSD, beyond the macOS kqueue path: `cargo test -p laputa-polling -p laputa-async-io`.
-- Linux musl x86_64 execution, and `laputa-smol` tests on musl aarch64. The first needs qemu or a musl cross C toolchain. The second needs a musl OpenSSL sysroot for `openssl-sys`. CI compiles musl x86_64 and does not run those tests.
-- The h12tiny TLS and HTTP/2 gates on hosts this checkout cannot reach. Run `fixtures/h12tiny.sh` there.
+## Execution gaps
+
+- BSD beyond macOS: run `cargo test -p laputa-polling -p laputa-async-io` on the actual target.
+- Linux musl x86_64 execution and a current full musl aarch64 suite, including `laputa-smol`, remain unverified by the recorded runs.
+- Run `fixtures/h12tiny.sh` on a host with access to its pinned repository and dependency sources before claiming the HTTP/2 and TLS gates passed.
