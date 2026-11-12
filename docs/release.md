@@ -6,7 +6,7 @@
 
 `make publish` has two phases. First, `scripts/bump_minor_release.sh` bumps the version, commits, tags, and publishes to the public Cargo registry. Then `make publish-mycrates` invokes `stuff publish cargo` for the private registry. `REGISTRY` defaults to `mycrates` and affects only that second phase; `STUFF` selects its executable. Run these targets only for an intended release.
 
-The public phase names `crates-io` on search, ownership, dry runs, and uploads. Dependency downloads still use the committed source replacement, and that replacement is not the upload destination. Its Python graph queries can also create unignored bytecode before the clean-tree check. SMOL-8 in [TODO.md](../TODO.md) tracks that blocker.
+The public phase names `crates-io` on search, ownership, dry runs, and uploads. Dependency downloads still use the committed source replacement, and that replacement is not the upload destination.
 
 The script requires Cargo credentials before querying or editing. It chooses the next minor after the greater of the local and published versions, resets the patch, and derives dependency order from `tools/release_graph.py`. One commit updates the workspace, component and consumer requirements, and both lockfiles. Components receive `<name>-v<version>` tags before upload; a tag does not prove successful publication. A matching release commit permits resuming partial publication. If a published version exists and the local version is newer without a matching release commit, the script stops. Keep the release identity intact when resuming.
 

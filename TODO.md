@@ -19,15 +19,6 @@ Next: 13
 - **Fix with:** `lifecycle-concurrency`
 - **Effort:** M
 
-### SMOL-8 · P1 · Release preflight dirties its own checkout and rejects it
-
-- **Area:** Build
-- **Where:** `scripts/bump_minor_release.sh:358`, `scripts/bump_minor_release.sh:395`, `scripts/bump_minor_release.sh:497`, `scripts/bump_minor_release.sh:536`, `tools/release_graph.py:6`, `.gitignore:1`
-- **Problem:** Release graph queries import `identity` before the release script checks for a clean tree. With normal Python defaults, this creates unignored `tools/__pycache__/`. In a clean disposable clone, `python3 tools/release_graph.py version` prints `0.3.0`, then `git status --porcelain=v1` reports that directory. Running the unchanged release script with only registry queries stubbed succeeds through those queries and then exits with `release requires a clean working tree`; no tracked files change. This independently blocks a release or resume after the registry-query defect is repaired.
-- **Recommendation:** Suppress or redirect bytecode for these tooling entry points, or intentionally ignore their cache directories. Keep rejection of unrelated untracked user files. Exercise release preflight from a clean clone with normal Python defaults and no user-global Git ignore rules.
-- **Fix with:** `isolate-effects`
-- **Effort:** S
-
 ### SMOL-6 · P2 · Waker callbacks run while internal locks are held
 
 - **Area:** Concurrency
