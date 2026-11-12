@@ -14,7 +14,6 @@ use std::task::{Context, Poll};
 #[derive(Debug)]
 pub(crate) struct PingPong {
     pending_ping: Option<PendingPing>,
-    pending_pong: Option<PingPayload>,
     user_pings: Option<UserPingsRx>,
 }
 
@@ -42,7 +41,7 @@ struct PendingPing {
 /// Status returned from `PingPong::recv_ping`.
 #[derive(Debug)]
 pub(crate) enum ReceivedPing {
-    MustAck,
+    MustAck(PingPayload),
     Unknown,
     Shutdown,
 }
@@ -64,7 +63,6 @@ impl PingPong {
     pub(crate) fn new() -> Self {
         PingPong {
             pending_ping: None,
-            pending_pong: None,
             user_pings: None,
         }
     }
@@ -95,10 +93,6 @@ impl PingPong {
 
     /// Process a ping
     pub(crate) fn recv_ping(&mut self, ping: Ping) -> ReceivedPing {
-        // The caller should always check that `send_pongs` returns ready before
-        // calling `recv_ping`.
-        assert!(self.pending_pong.is_none());
-
         if ping.is_ack() {
             if let Some(pending) = self.pending_ping.take() {
                 if &pending.payload == ping.payload() {
@@ -128,33 +122,8 @@ impl PingPong {
             tracing::warn!("recv PING ack that we never sent: {:?}", ping);
             ReceivedPing::Unknown
         } else {
-            // Save the ping's payload to be sent as an acknowledgement.
-            self.pending_pong = Some(ping.into_payload());
-            ReceivedPing::MustAck
+            ReceivedPing::MustAck(ping.into_payload())
         }
-    }
-
-    /// Send any pending pongs.
-    pub(crate) fn send_pending_pong<T, B>(
-        &mut self,
-        cx: &mut Context,
-        dst: &mut Codec<T, B>,
-    ) -> Poll<io::Result<()>>
-    where
-        T: AsyncWrite + Unpin,
-        B: Buf,
-    {
-        if let Some(pong) = self.pending_pong.take() {
-            if !dst.poll_ready(cx)?.is_ready() {
-                self.pending_pong = Some(pong);
-                return Poll::Pending;
-            }
-
-            dst.buffer(Ping::pong(pong).into())
-                .expect("invalid pong frame");
-        }
-
-        Poll::Ready(Ok(()))
     }
 
     /// Send any pending pings.
@@ -195,12 +164,6 @@ impl PingPong {
         }
 
         Poll::Ready(Ok(()))
-    }
-}
-
-impl ReceivedPing {
-    pub(crate) fn is_shutdown(&self) -> bool {
-        matches!(*self, Self::Shutdown)
     }
 }
 

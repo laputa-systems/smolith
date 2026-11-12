@@ -4,15 +4,38 @@ use crate::{client, server};
 
 use crate::frame::DEFAULT_INITIAL_WINDOW_SIZE;
 use crate::proto::*;
+use crate::proto::ping_pong::ReceivedPing;
 
 use bytes::Bytes;
 use futures_core::Stream;
 use futures_io::AsyncRead;
+use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
+
+const MAX_PENDING_CONTROL_RESPONSES: usize = 32;
+
+#[derive(Debug)]
+enum ControlResponse {
+    Pong(PingPayload),
+    Settings,
+}
+
+#[derive(Debug, Default)]
+struct ControlResponses(VecDeque<ControlResponse>);
+
+impl ControlResponses {
+    fn push(&mut self, response: ControlResponse) -> Result<(), Error> {
+        if self.0.len() == MAX_PENDING_CONTROL_RESPONSES {
+            return Err(Error::library_go_away(Reason::ENHANCE_YOUR_CALM));
+        }
+        self.0.push_back(response);
+        Ok(())
+    }
+}
 
 /// An H2 connection
 #[derive(Debug)]
@@ -51,6 +74,8 @@ where
     /// Ping/pong handler
     ping_pong: PingPong,
 
+    control_responses: ControlResponses,
+
     /// Connection settings
     settings: Settings,
 
@@ -74,6 +99,8 @@ struct DynConnection<'a, B: Buf = Bytes> {
     error: &'a mut Option<frame::GoAway>,
 
     ping_pong: &'a mut PingPong,
+
+    control_responses: &'a mut ControlResponses,
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +192,7 @@ where
                 go_away: GoAway::new(),
                 pending_refusal: None,
                 ping_pong: PingPong::new(),
+                control_responses: ControlResponses::default(),
                 settings: Settings::new(config.settings),
                 streams,
                 span,
@@ -219,13 +247,20 @@ where
         let _e = self.inner.span.enter();
         let span = tracing::trace_span!("poll_ready");
         let _e = span.enter();
-        // The order of these calls don't really matter too much
-        ready!(self.inner.ping_pong.send_pending_pong(cx, &mut self.codec))?;
+        while !self.inner.control_responses.0.is_empty() {
+            ready!(self.codec.poll_ready(cx))?;
+            let response = self.inner.control_responses.0.pop_front().expect("pending response");
+            let frame = match response {
+                ControlResponse::Pong(payload) => frame::Ping::pong(payload).into(),
+                ControlResponse::Settings => frame::Settings::ack().into(),
+            };
+            self.codec.buffer(frame).expect("valid control response");
+        }
         ready!(self.inner.ping_pong.send_pending_ping(cx, &mut self.codec))?;
         ready!(self
             .inner
             .settings
-            .poll_send(cx, &mut self.codec, &mut self.inner.streams))?;
+            .poll_send(cx, &mut self.codec))?;
         if let Some(id) = self.inner.pending_refusal {
             // Keep the refusal pending if making room requires socket progress.
             ready!(self.codec.poll_ready(cx))?;
@@ -431,6 +466,9 @@ where
     fn handle_received_frame(&mut self, frame: ReceivedFrame) -> Result<bool, Error> {
         match frame {
             ReceivedFrame::Settings(frame) => {
+                if !frame.is_ack() {
+                    self.inner.control_responses.push(ControlResponse::Settings)?;
+                }
                 self.inner.settings.recv_settings(
                     frame,
                     &mut self.codec,
@@ -464,6 +502,7 @@ where
             streams,
             error,
             ping_pong,
+            control_responses,
             ..
         } = self;
         let streams = streams.as_dyn();
@@ -473,6 +512,7 @@ where
             streams,
             error,
             ping_pong,
+            control_responses,
         }
     }
 }
@@ -637,7 +677,9 @@ where
             Some(Ping(frame)) => {
                 tracing::trace!(?frame, "recv PING");
                 let status = self.ping_pong.recv_ping(frame);
-                if status.is_shutdown() {
+                if let ReceivedPing::MustAck(payload) = status {
+                    self.control_responses.push(ControlResponse::Pong(payload))?;
+                } else if let ReceivedPing::Shutdown = status {
                     assert!(
                         self.go_away.is_going_away(),
                         "received unexpected shutdown ping"

@@ -7,7 +7,7 @@
 //! the HTTP/2 handshake. See [here](../index.html#handshake) for more
 //! details.
 //!
-//! This could be as basic as using Tokio's [`TcpStream`] to connect to a remote
+//! This could be as basic as using a futures-I/O `TcpStream` to connect to a remote
 //! host, but usually it means using either ALPN or HTTP/1.1 protocol upgrades.
 //!
 //! Once a connection is obtained, it is passed to [`handshake`], which will

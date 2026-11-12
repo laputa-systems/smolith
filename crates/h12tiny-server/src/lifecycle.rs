@@ -27,6 +27,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+const PRODUCTION_SETUP_TIMEOUT: Duration = Duration::from_secs(10);
+
 const ACCEPT_RETRY_BACKOFF: Duration = Duration::from_millis(10);
 
 /// The error delivered to the optional connection error hook.
@@ -121,6 +123,7 @@ pub struct Serve<L, S> {
     executor: BoxExecutor,
     max_connections: Option<usize>,
     drain_timeout: Option<Duration>,
+    setup_timeout: Option<Duration>,
     on_connection_error: Option<Arc<dyn Fn(ConnectionError) + Send + Sync>>,
     on_connection_rejected: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -139,6 +142,7 @@ pub struct TlsServe<L, S> {
     executor: BoxExecutor,
     max_connections: Option<usize>,
     drain_timeout: Option<Duration>,
+    setup_timeout: Option<Duration>,
     on_connection_error: Option<Arc<dyn Fn(ConnectionError) + Send + Sync>>,
     on_connection_rejected: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -172,6 +176,7 @@ where
         executor,
         max_connections: None,
         drain_timeout: None,
+        setup_timeout: None,
         on_connection_error: None,
         on_connection_rejected: None,
     }
@@ -205,6 +210,7 @@ where
         executor,
         max_connections: None,
         drain_timeout: None,
+        setup_timeout: None,
         on_connection_error: None,
         on_connection_rejected: None,
     }
@@ -244,11 +250,25 @@ impl<L, S> Serve<L, S> {
 
     /// Applies the Internet-facing listener preset.
     ///
-    /// Caps active connections at 1024 and closes a client that takes longer
-    /// than 10 s to send complete HTTP/1 headers.
+    /// Caps active connections at 1024, allows 10 s to select a cleartext
+    /// protocol, and closes a client that takes longer than 10 s to send
+    /// complete HTTP/1 headers.
     pub fn production(self) -> Self {
         self.with_bounds(ProductionBounds::default())
             .expect("production bounds are valid")
+            .setup_timeout(PRODUCTION_SETUP_TIMEOUT)
+            .expect("production setup deadline is nonzero")
+    }
+
+    /// Bounds cleartext protocol detection, starting at acceptance.
+    ///
+    /// The deadline ends when HTTP/1 or HTTP/2 is selected. It does not limit
+    /// an established response stream. `None` leaves detection unbounded. A
+    /// zero duration is rejected.
+    pub fn setup_timeout(mut self, timeout: impl Into<Option<Duration>>) -> io::Result<Self> {
+        self.setup_timeout = checked_setup_timeout(timeout.into())?;
+        self.builder.set_setup_timeout(self.setup_timeout);
+        Ok(self)
     }
 
     /// Bounds how long shutdown waits for active connections.
@@ -303,11 +323,25 @@ impl<L, S> TlsServe<L, S> {
 
     /// Applies the Internet-facing listener preset.
     ///
-    /// Caps active handshakes and connections at 1024 and closes a client that
-    /// takes longer than 10 s to send complete HTTP/1 headers.
+    /// Caps active handshakes and connections at 1024, allows 10 s to finish
+    /// the TLS handshake, and closes a client that takes longer than 10 s to
+    /// send complete HTTP/1 headers.
     pub fn production(self) -> Self {
         self.with_bounds(ProductionBounds::default())
             .expect("production bounds are valid")
+            .setup_timeout(PRODUCTION_SETUP_TIMEOUT)
+            .expect("production setup deadline is nonzero")
+    }
+
+    /// Bounds TLS acceptance, starting when the raw stream is accepted.
+    ///
+    /// The deadline ends when the handshake completes. It does not limit an
+    /// established response stream. `None` leaves acceptance unbounded. A
+    /// zero duration is rejected.
+    pub fn setup_timeout(mut self, timeout: impl Into<Option<Duration>>) -> io::Result<Self> {
+        self.setup_timeout = checked_setup_timeout(timeout.into())?;
+        self.builder.set_setup_timeout(self.setup_timeout);
+        Ok(self)
     }
 
     /// Bounds how long shutdown waits for active connections.
@@ -327,6 +361,16 @@ impl<L, S> TlsServe<L, S> {
         self.builder = configure_builder(self.builder, bounds);
         Ok(self)
     }
+}
+
+fn checked_setup_timeout(timeout: Option<Duration>) -> io::Result<Option<Duration>> {
+    if matches!(timeout, Some(timeout) if timeout.is_zero()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "setup timeout must be greater than zero",
+        ));
+    }
+    Ok(timeout)
 }
 
 fn configure_builder(
@@ -600,12 +644,12 @@ where
                     let builder = server.builder.clone();
                     let service = server.service.clone();
                     let hook = server.on_connection_error.clone();
+                    let connection = Box::pin(
+                        builder
+                            .serve_connection(FuturesIo::new(stream), service)
+                            .into_owned(),
+                    );
                     server.executor.execute(async move {
-                        let connection = Box::pin(
-                            builder
-                                .serve_connection(FuturesIo::new(stream), service)
-                                .into_owned(),
-                        );
                         let shutdown = Box::pin(shutdown_rx);
                         let abort = Box::pin(abort_rx);
                         let result = match future::select(connection, shutdown).await {
@@ -717,11 +761,31 @@ where
                     let builder = server.builder.clone();
                     let service = server.service.clone();
                     let hook = server.on_connection_error.clone();
+                    let setup_deadline = server.setup_timeout.map(|timeout| AsyncIoTimer.sleep(timeout));
                     server.executor.execute(async move {
-                        // Keep the handshake and connection in one tracked
-                        // task. The receiver returned by the first select is
-                        // retained for the established connection.
-                        let handshake = Box::pin(acceptor.accept(stream));
+                        let handshake = acceptor.accept(stream);
+                        let handshake = async move {
+                            if let Some(deadline) = setup_deadline {
+                                match future::select(
+                                    Box::pin(handshake),
+                                    deadline,
+                                )
+                                .await
+                                {
+                                    Either::Left((result, _timer)) => result,
+                                    Either::Right((_elapsed, handshake)) => {
+                                        drop(handshake);
+                                        Err(io::Error::new(
+                                            io::ErrorKind::TimedOut,
+                                            "connection setup deadline expired",
+                                        ))
+                                    }
+                                }
+                            } else {
+                                handshake.await
+                            }
+                        };
+                        let handshake = Box::pin(handshake);
                         let shutdown = Box::pin(shutdown_rx);
                         let (tls, shutdown) = match future::select(handshake, shutdown).await {
                             Either::Left((Ok(tls), shutdown)) => (tls, shutdown),
@@ -875,6 +939,28 @@ mod tests {
             invalid.validate().expect_err("zero timeout must fail").kind(),
             io::ErrorKind::InvalidInput
         );
+    }
+
+    #[test]
+    fn production_installs_a_setup_deadline_and_rejects_zero() {
+        let listener = futures_lite::future::block_on(async_net::TcpListener::bind("127.0.0.1:0"))
+            .expect("bind test listener");
+        let server = serve(listener, EmptyService, BoxExecutor::new(ThreadExecutor)).production();
+        assert_eq!(server.setup_timeout, Some(Duration::from_secs(10)));
+
+        let listener = futures_lite::future::block_on(async_net::TcpListener::bind("127.0.0.1:0"))
+            .expect("bind test listener");
+        let error = serve(listener, EmptyService, BoxExecutor::new(ThreadExecutor))
+            .setup_timeout(Duration::ZERO)
+            .err().expect("zero setup deadline");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+
+        let listener = futures_lite::future::block_on(async_net::TcpListener::bind("127.0.0.1:0"))
+            .expect("bind test listener");
+        let server = serve(listener, EmptyService, BoxExecutor::new(ThreadExecutor))
+            .setup_timeout(None)
+            .expect("absent setup deadline");
+        assert_eq!(server.setup_timeout, None);
     }
 
     #[test]

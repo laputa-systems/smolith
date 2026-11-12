@@ -35,15 +35,19 @@ and resolves after those drivers finish. Connection limits and an optional
 connection-error hook are available on the lifecycle builders.
 
 `Serve::production` and `TlsServe::production` apply the Internet-facing
-preset: 1024 active connections, a 10 s HTTP/1 header-read timeout, and a 30 s
-drain deadline. The preset also installs the Hyper timer needed by the header
-timeout. Add `on_connection_rejected` to observe streams closed at capacity.
-Transient listener accept errors are retried with a short backoff; fatal
-accept errors stop the loop.
+preset: 1024 active connections, a 10 s setup deadline, a 10 s HTTP/1
+header-read timeout, and a 30 s drain deadline. The preset also installs the
+Hyper timer needed by the header timeout. Add `on_connection_rejected` to
+observe streams closed at capacity. Transient listener accept errors are
+retried with a short backoff; fatal accept errors stop the loop.
 
-The header timeout starts after HTTP/1 selection. TLS acceptance and cleartext
-protocol detection have no setup deadline, including with the production
-preset; shutdown still cancels them.
+The setup deadline starts at acceptance. For cleartext it ends when protocol
+detection selects HTTP/1 or HTTP/2. For TLS it ends when the handshake
+completes. It does not limit an established response stream; HTTP/1 header
+reads keep their own timeout. Expiry closes the setup, reports
+`io::ErrorKind::TimedOut` to the connection-error hook, and releases the
+admission slot. `setup_timeout` sets another deadline, and `None` leaves setup
+unbounded. Shutdown still cancels pending setup.
 
 Draining established streams has no deadline unless `drain_timeout` is set.
 `Serve::production` and `TlsServe::production` use 30 s. When the deadline

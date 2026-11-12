@@ -11,7 +11,8 @@
 //! supported; HTTP/1.1 `h2c` upgrades remain intentionally out of scope.
 
 use bytes::{Buf, Bytes};
-use hyper::rt::{Read, ReadBuf, ReadBufCursor, Write};
+use h12tiny_core::runtime::AsyncIoTimer;
+use hyper::rt::{Read, ReadBuf, ReadBufCursor, Timer, Write};
 use std::cmp;
 use std::future::Future;
 use std::io;
@@ -23,7 +24,6 @@ use std::sync::{Arc, atomic::AtomicUsize};
 #[cfg(feature = "http2")]
 use std::sync::atomic::Ordering;
 use std::task::{ready, Context, Poll};
-#[cfg(feature = "http1")]
 use std::time::Duration;
 
 const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
@@ -306,6 +306,7 @@ pub struct Builder<E> {
     #[cfg(feature = "http2")]
     http2: hyper::server::conn::http2::Builder<E>,
     version: Option<Version>,
+    setup_timeout: Option<Duration>,
     #[cfg(not(feature = "http2"))]
     _executor: E,
 }
@@ -327,9 +328,14 @@ impl<E> Builder<E> {
             #[cfg(feature = "http2")]
             http2: hyper::server::conn::http2::Builder::new(executor),
             version: None,
+            setup_timeout: None,
             #[cfg(not(feature = "http2"))]
             _executor: executor,
         }
+    }
+
+    pub(crate) fn set_setup_timeout(&mut self, timeout: Option<Duration>) {
+        self.setup_timeout = timeout;
     }
 
     /// Returns a mutable view of the HTTP/1 configuration.
@@ -448,6 +454,7 @@ impl<E> Builder<E> {
                 read_version: read_version(io),
                 builder: Cow::Borrowed(self),
                 service: Some(service),
+                setup_deadline: self.setup_timeout.map(|timeout| AsyncIoTimer.sleep(timeout)),
             },
         };
 
@@ -598,6 +605,7 @@ pin_project_lite::pin_project! {
             read_version: ReadVersion<I>,
             builder: Cow<'a, Builder<E>>,
             service: Option<S>,
+            setup_deadline: Option<Pin<Box<dyn hyper::rt::Sleep>>>,
         },
         H1 {
             #[pin]
@@ -665,9 +673,11 @@ where
                     read_version,
                     builder,
                     service,
+                    setup_deadline,
                 } => ConnState::ReadVersion {
                     read_version,
                     service,
+                    setup_deadline,
                     builder: Cow::Owned(match builder {
                         Cow::Borrowed(builder) => builder.clone(),
                         Cow::Owned(builder) => builder,
@@ -706,8 +716,25 @@ where
                     read_version,
                     builder,
                     service,
+                    setup_deadline,
                 } => {
-                    let (version, io) = ready!(read_version.poll(cx))?;
+                    let detected = match read_version.poll(cx) {
+                        Poll::Ready(detected) => detected,
+                        Poll::Pending => {
+                            if let Some(deadline) = setup_deadline.as_mut() {
+                                if deadline.as_mut().poll(cx).is_ready() {
+                                    return Poll::Ready(Err(io::Error::new(
+                                        io::ErrorKind::TimedOut,
+                                        "connection setup deadline expired",
+                                    )
+                                    .into()));
+                                }
+                            }
+                            return Poll::Pending;
+                        }
+                    };
+                    *setup_deadline = None;
+                    let (version, io) = detected?;
                     let service = service
                         .take()
                         .expect("service present until protocol choice");
@@ -876,6 +903,7 @@ mod tests {
     struct Chunks {
         chunks: VecDeque<Vec<u8>>,
         writes: Vec<u8>,
+        pending_on_empty: bool,
     }
 
     impl Chunks {
@@ -883,6 +911,7 @@ mod tests {
             Self {
                 chunks: chunks.into_iter().map(|chunk| chunk.to_vec()).collect(),
                 writes: Vec::new(),
+                pending_on_empty: false,
             }
         }
     }
@@ -894,6 +923,9 @@ mod tests {
             mut buf: ReadBufCursor<'_>,
         ) -> Poll<io::Result<()>> {
             let Some(chunk) = self.chunks.pop_front() else {
+                if self.pending_on_empty {
+                    return Poll::Pending;
+                }
                 return Poll::Ready(Ok(()));
             };
             let len = chunk.len().min(buf.remaining());
@@ -928,6 +960,82 @@ mod tests {
         let waker = Waker::noop();
         let mut cx = Context::from_waker(waker);
         future.as_mut().poll(&mut cx)
+    }
+
+    #[cfg(feature = "http1")]
+    #[test]
+    fn setup_deadline_covers_silent_and_partial_detection_only() {
+        use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+        use std::future::Future;
+
+        struct Deadline(Arc<AtomicBool>);
+        impl Future for Deadline {
+            type Output = ();
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+                if self.0.load(Ordering::SeqCst) {
+                    Poll::Ready(())
+                } else {
+                    Poll::Pending
+                }
+            }
+        }
+        impl hyper::rt::Sleep for Deadline {}
+
+        #[derive(Clone)]
+        struct Executor;
+        impl<F> hyper::rt::Executor<F> for Executor {
+            fn execute(&self, _: F) {
+                panic!("HTTP/1 must not spawn a task")
+            }
+        }
+
+        struct EmptyBody;
+        impl http_body::Body for EmptyBody {
+            type Data = Bytes;
+            type Error = io::Error;
+            fn poll_frame(
+                self: Pin<&mut Self>,
+                _: &mut Context<'_>,
+            ) -> Poll<Option<Result<http_body::Frame<Bytes>, io::Error>>> {
+                Poll::Ready(None)
+            }
+        }
+
+        for prefix in [
+            b"".as_slice(),
+            b"PRI * HTTP/2.0\r\n".as_slice(),
+            b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n".as_slice(),
+        ] {
+            let mut io = Chunks::new([prefix].into_iter().filter(|chunk| !chunk.is_empty()));
+            io.pending_on_empty = true;
+            let builder = super::Builder::new(Executor);
+            let service = hyper::service::service_fn(|_| {
+                std::future::pending::<Result<http::Response<EmptyBody>, io::Error>>()
+            });
+            let mut connection = builder.serve_connection(io, service);
+            let expired = Arc::new(AtomicBool::new(false));
+            let super::ConnState::ReadVersion { setup_deadline, .. } = &mut connection.state else {
+                panic!("detection state")
+            };
+            *setup_deadline = Some(Box::pin(Deadline(expired.clone())));
+            let mut connection = Box::pin(connection);
+            assert!(poll_once(&mut connection.as_mut()).is_pending());
+            expired.store(true, Ordering::SeqCst);
+            if prefix.starts_with(b"GET") {
+                assert!(
+                    poll_once(&mut connection.as_mut()).is_pending(),
+                    "established request survives setup expiry",
+                );
+            } else {
+                let Poll::Ready(Err(error)) = poll_once(&mut connection.as_mut()) else {
+                    panic!("setup must expire")
+                };
+                assert_eq!(
+                    error.downcast_ref::<io::Error>().unwrap().kind(),
+                    io::ErrorKind::TimedOut,
+                );
+            }
+        }
     }
 
     #[test]

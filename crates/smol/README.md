@@ -4,9 +4,6 @@ A small and fast async runtime.
 
 This crate simply re-exports other smaller async crates (see the source).
 
-To use tokio-based libraries with smol, apply the [`async-compat`] adapter to futures and I/O
-types.
-
 See the [`smol-macros`] crate if you want a no proc-macro, fast compiling, easy-to-use
 async main and/or multi-threaded Executor setup out of the box.
 
@@ -32,7 +29,7 @@ fn main() -> io::Result<()> {
 
 There's a lot more in the [examples](https://github.com/laputa-systems/smolith/tree/main/crates/smol/examples) directory.
 
-To call Tokio libraries from this runtime, adapt the futures with [async-compat](https://docs.rs/async-compat/latest/async_compat/). That crate is not part of this workspace. [`smol-macros`](https://github.com/laputa-systems/smolith/tree/main/crates/smol-macros) provides the macros.
+[`smol-macros`](https://github.com/laputa-systems/smolith/tree/main/crates/smol-macros) provides the macros.
 
 ## Subcrates
 

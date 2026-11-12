@@ -155,10 +155,12 @@ where
                 *x = MaybeUninit::new(0);
             }
 
+            // SAFETY: every byte of the spare capacity was initialized above.
             let b = unsafe { &mut *(b as *mut [MaybeUninit<u8>] as *mut [u8]) };
 
             let bytect = match pinned.inner.as_mut().poll_read(cx, b)? {
                 Poll::Ready(ct) => {
+                    // SAFETY: the successful read initialized the first ct bytes.
                     unsafe { state.buffer.advance_mut(ct) };
                     ct
                 }

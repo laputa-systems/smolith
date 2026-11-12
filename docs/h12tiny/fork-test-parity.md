@@ -25,16 +25,17 @@ flow-control exchange) are separate rows and do not inflate inherited counts.
 | h2 | h2-tests push_promise | `tests/h2-tests/tests/push_promise.rs` | 13 | 13 | 0 | ported | `cargo test -p h2-tests --test push_promise` | self |
 | h2 | h2-tests trailers | `tests/h2-tests/tests/trailers.rs` | 5 | 5 | 0 | ported | `cargo test -p h2-tests --test trailers` | self |
 | h2 | h2-tests hammer | `tests/h2-tests/tests/hammer.rs` | 1 | 1 | 0 | ported | `cargo test -p h2-tests --test hammer` | self |
-| hyper | library | `src/**/*.rs` | 138 | 134 | 4 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --lib` | `client_flushing_is_not_ready_for_next_request` |
+| hyper | library | `src/**/*.rs` | 135 | 134 | 1 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --lib` | `client_flushing_is_not_ready_for_next_request` |
 | hyper | h1_flush_before_yield | `tests/h1_flush_before_yield.rs` | 1 | 1 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test h1_flush_before_yield` | - |
 | hyper | h1_shutdown_while_buffered | `tests/h1_shutdown_while_buffered.rs` | 1 | 1 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test h1_shutdown_while_buffered` | - |
 | hyper | ready_on_poll_stream | `tests/ready_on_poll_stream.rs` | 1 | 1 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test ready_on_poll_stream` | - |
 | hyper | unbuffered_stream | `tests/unbuffered_stream.rs` | 1 | 1 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test unbuffered_stream` | - |
+| hyper | cooperative drain tests | deleted (runtime-specific cooperative budget) | 3 | 0 | 3 | excluded | not in gate | `client_flushing_is_not_ready_for_next_request` |
 | hyper | h1_ready_in_flight | deleted (Tokio cooperative budget) | 1 | 0 | 1 | excluded | not in gate | `ready_on_poll_stream`, `h1_flush_before_yield` |
 | hyper | client | `tests/client.rs` | 70 | 70 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test client` | - |
 | hyper | server | `tests/server.rs` | 99 | 99 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test server` | - |
 | hyper | integration | `tests/integration.rs` | 14 | 14 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test integration` | - |
-| fastwebsockets | fastwebsockets | `crates/laputa-fastwebsockets-futures-lite` | 37 | 37 | 0 | ported | `cargo test --manifest-path crates/laputa-fastwebsockets-futures-lite/Cargo.toml --locked --all-features` | self |
+| fastwebsockets | fastwebsockets | `crates/laputa-fastwebsockets-futures-lite` | 40 | 40 | 0 | ported | `cargo test --manifest-path crates/laputa-fastwebsockets-futures-lite/Cargo.toml --locked --all-features` | self |
 
 Exclusion reasons:
 
@@ -46,7 +47,7 @@ Exclusion reasons:
   `client_close_drains_pending_requests_on_eof`, and
   `client_close_drains_pending_requests_without_shutdown` exhaust Tokio's
   cooperative budget to force a closed channel to return `Pending`. Futures
-  channels have no cooperative budget, so the tests are ignored, not simulated.
+  channels have no cooperative budget, so those runtime-specific tests are removed.
   `client_flushing_is_not_ready_for_next_request` covers dispatcher shutdown
   and drain ordering.
 - `client_read_bytes_before_writing_request` depends on the Tokio mock's
@@ -82,7 +83,7 @@ port change.
 
 | Fork | Suite | Source file | Reference count | Ported | Excluded | Status | Command | Covering test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| h2 | h2#975 bidirectional deadlock | `tests/h2-tests/tests/h2_975.rs` | 1 | 1 | 0 | ported | `cargo test -p h2-tests --test h2_975` | self |
+| h2 | h2#975 bidirectional deadlock | `tests/h2-tests/tests/h2_975.rs` | 2 | 2 | 0 | ported | `cargo test -p h2-tests --test h2_975` | self |
 | shared | wake loss detection | `crates/laputa-protocol-test-support` | 1 | 1 | 0 | ported | `cargo test --manifest-path crates/laputa-protocol-test-support/Cargo.toml wake_loss_is_detected` | self |
 
 ## Reference inventory

@@ -9,7 +9,7 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use futures_lite::io::{AsyncRead, AsyncWrite};
 
 struct MockIo<'a> {
     input: &'a [u8],
@@ -34,13 +34,13 @@ impl<'a> AsyncRead for MockIo<'a> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut ReadBuf,
-    ) -> Poll<io::Result<()>> {
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
 
 
         let mut len = self.next_u32() as usize;
         if self.input.is_empty() {
-            Poll::Ready(Ok(()))
+            Poll::Ready(Ok(0))
         } else if len == 0 {
             cx.waker().clone().wake();
             Poll::Pending
@@ -49,12 +49,12 @@ impl<'a> AsyncRead for MockIo<'a> {
                 len = self.input.len();
             }
 
-            if len > buf.remaining() {
-                len = buf.remaining();
+            if len > buf.len() {
+                len = buf.len();
             }
-            buf.put_slice(&self.input[..len]);
+            buf[..len].copy_from_slice(&self.input[..len]);
             self.input = &self.input[len..];
-            Poll::Ready(Ok(()))
+            Poll::Ready(Ok(len))
         }
     }
 }
@@ -81,7 +81,7 @@ impl<'a> AsyncWrite for MockIo<'a> {
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Ready(Ok(()))
     }
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Ready(Ok(()))
     }
 }
@@ -123,7 +123,6 @@ async fn run(script: &[u8]) -> Result<(), h2::Error> {
 }
 
 fuzz_target!(|data: &[u8]| {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _res = rt.block_on(run(data));
+    let _res = futures_lite::future::block_on(run(data));
 });
 

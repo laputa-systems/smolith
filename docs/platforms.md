@@ -16,7 +16,9 @@ Windows is unsupported. Its target reaches `compile_error!` in polling, async-io
 
 HTTP, TLS, cancellation, reuse, timeout, shutdown, and WebSocket behavior is covered by the facade integration tests under `crates/h12tiny/tests`. `make test` runs that suite with its features enabled. `sh scripts/verify-protocols.sh` runs the protocol suites on the host that executes it. A target compile check does not establish that execution.
 
-Inherited Tokio examples and benches for Hyper and H2 are kept under each fork's `historical/` directory and are not Cargo targets. fastwebsockets keeps its inherited `examples/`, `autobahn/`, and `benches/` sources off the automatic target list.
+Protocol examples run through the h12tiny facade. The H2 and WebSocket fuzz targets use futures-I/O.
+
+The WASM browser test harness is removed because its runtime dependency includes Tokio. Its test cases remain native Rust tests. Browser execution is not maintained.
 
 ## Execution gaps
 

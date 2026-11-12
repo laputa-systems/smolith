@@ -159,6 +159,10 @@ def check_metadata(metadata_json, versions, upstream_names, label=""):
     workspace_members = set(meta["workspace_members"])
     owned_names = set(versions)
 
+    for package in meta["packages"]:
+        if "tokio" in package["name"]:
+            raise ValueError(f"[{label}] Tokio package {package['name']} found in dependency graph: {package['id']}")
+
     member_names = set()
     for pid in workspace_members:
         p = packages_by_id[pid]
@@ -224,11 +228,6 @@ def check_metadata(metadata_json, versions, upstream_names, label=""):
         if pname in upstream_names:
             raise ValueError(f"[{label}] Upstream package {pname} found in normal/build path: {pid}")
 
-        # 2. No tokio or tokio-util
-        if "tokio" in pname:
-            raise ValueError(f"[{label}] Tokio package {pname} found in normal/build path: {pid}")
-
-        # 3. Owned components must resolve to path source (None)
         if pname in versions:
             if p["source"] is not None:
                 raise ValueError(f"[{label}] Owned component {pname} resolved from non-path source: {p['source']}")
@@ -295,7 +294,7 @@ def run_gate():
             output = subprocess.check_output(cmd, cwd="/", text=True)
             check_metadata(output, versions, upstream_names, label)
 
-    print(f"GRAPH GATE PASSED: all {len(versions)} owned packages resolved to path sources, no upstream packages or tokio in normal/build paths, one version per owned package, no unpublished paths or workspace patches.")
+    print(f"GRAPH GATE PASSED: all {len(versions)} owned packages resolved to path sources, no upstream packages in normal/build paths, no Tokio in any dependency, one version per owned package, no unpublished paths or workspace patches.")
 
 if __name__ == "__main__":
     try:

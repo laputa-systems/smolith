@@ -34,4 +34,4 @@ Tokio-free Rust HTTP components: a futures-I/O client and server, a separate blo
 - External interoperability and performance tools: [scripts guide](../../scripts/README.md)
 - Production bounds and lifecycle defaults: [limits](limits.md), [server](server.md)
 - Deferred fixes: [TODO.md](TODO.md)
-- Draft designs: [H2 control responses](rfc/H12T-18-h2-control-responses.md), [setup deadlines](rfc/H12T-25-connection-setup-deadline.md), [trust and resumption](rfc/H12T-26-trust-resumption.md)
+- Design decisions: [H2 control responses](rfc/H12T-18-h2-control-responses.md), [setup deadlines](rfc/H12T-25-connection-setup-deadline.md), [trust and resumption](rfc/H12T-26-trust-resumption.md)

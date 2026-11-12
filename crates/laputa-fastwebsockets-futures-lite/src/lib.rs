@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! _fastwebsockets-futures_ is a vendored adaptation of fastwebsockets that uses
-//! `futures-lite::io` traits instead of `tokio::io`.
+//! `futures-lite::io` traits.
 //!
 //! It provides a minimal, fast WebSocket frame parser and server implementation.
 

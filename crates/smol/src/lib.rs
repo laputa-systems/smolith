@@ -2,9 +2,6 @@
 //!
 //! This crate simply re-exports other smaller async crates (see the source).
 //!
-//! To use tokio-based libraries with smol, apply the [`async-compat`] adapter to futures and I/O
-//! types.
-//!
 //! See the [`smol-macros`] crate if you want a no proc-macro, fast compiling, easy-to-use
 //! async main and/or multi-threaded Executor setup out of the box.
 //!
@@ -30,7 +27,6 @@
 //!
 //! There's a lot more in the [examples] directory.
 //!
-//! [`async-compat`]: https://docs.rs/async-compat/latest/async_compat/
 //! [`smol-macros`]: https://docs.rs/smol-macros/latest/smol_macros/
 //! [examples]: https://github.com/smol-rs/smol/tree/master/examples
 

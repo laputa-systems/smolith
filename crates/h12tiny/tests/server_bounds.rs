@@ -178,3 +178,121 @@ fn production_drain_timeout_aborts_a_stalled_handler() {
         drop(client);
     });
 }
+
+#[test]
+fn setup_deadline_releases_a_silent_connection() {
+    smol::block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (error_tx, error_rx) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let server = smol::spawn(async move {
+            let error_tx = std::sync::Mutex::new(Some(error_tx));
+            serve(
+                listener,
+                service_fn(|_| async {
+                    Ok::<_, Infallible>(Response::new(FullBody::from_static(b"ok")))
+                }),
+                BoxExecutor::new(SmolExecutor),
+            )
+            .with_bounds(bounds(Duration::from_secs(5), 1))
+            .unwrap()
+            .setup_timeout(Duration::from_millis(50))
+            .unwrap()
+            .on_connection_error(move |error| {
+                if let Some(error_tx) = error_tx.lock().unwrap().take() {
+                    let _ = error_tx.send(error);
+                }
+            })
+            .shutdown_on(shutdown_rx)
+            .await
+            .unwrap();
+        });
+
+        let silent = TcpStream::connect(address).await.unwrap();
+        let error = match future::select(
+            Box::pin(error_rx),
+            Box::pin(async_io::Timer::after(Duration::from_secs(2))),
+        )
+        .await
+        {
+            Either::Left((result, _)) => result.expect("setup error was dropped"),
+            Either::Right(_) => panic!("silent connection was not timed out"),
+        };
+        let timed_out = error
+            .downcast_ref::<std::io::Error>()
+            .expect("setup timeout is an IO error");
+        assert_eq!(timed_out.kind(), std::io::ErrorKind::TimedOut);
+
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+        client.flush().await.unwrap();
+        let mut response = [0_u8; 128];
+        let read = match future::select(
+            Box::pin(client.read(&mut response)),
+            Box::pin(async_io::Timer::after(Duration::from_secs(2))),
+        )
+        .await
+        {
+            Either::Left((result, _)) => result.unwrap(),
+            Either::Right(_) => panic!("released slot did not serve the next connection"),
+        };
+        assert!(response[..read].starts_with(b"HTTP/1.1 200"));
+
+        drop(silent);
+        drop(client);
+        shutdown_tx.send(()).unwrap();
+        server.await;
+    });
+}
+
+#[test]
+fn setup_deadline_does_not_bound_an_established_stream() {
+    smol::block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let server = smol::spawn(async move {
+            serve(
+                listener,
+                service_fn(|_| async {
+                    async_io::Timer::after(Duration::from_millis(200)).await;
+                    Ok::<_, Infallible>(Response::new(FullBody::from_static(b"ok")))
+                }),
+                BoxExecutor::new(SmolExecutor),
+            )
+            .with_bounds(bounds(Duration::from_secs(5), 8))
+            .unwrap()
+            .setup_timeout(Duration::from_millis(50))
+            .unwrap()
+            .shutdown_on(shutdown_rx)
+            .await
+            .unwrap();
+        });
+
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+        client.flush().await.unwrap();
+        let mut response = [0_u8; 128];
+        let read = match future::select(
+            Box::pin(client.read(&mut response)),
+            Box::pin(async_io::Timer::after(Duration::from_secs(2))),
+        )
+        .await
+        {
+            Either::Left((result, _)) => result.unwrap(),
+            Either::Right(_) => panic!("established stream ended with the setup deadline"),
+        };
+        assert!(response[..read].windows(2).any(|window| window == b"ok"));
+
+        drop(client);
+        shutdown_tx.send(()).unwrap();
+        server.await;
+    });
+}

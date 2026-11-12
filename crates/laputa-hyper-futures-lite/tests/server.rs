@@ -2358,10 +2358,9 @@ fn h2_connect_backpressure_respected() {
     builder.initial_window_size(1024);
     builder.initial_connection_window_size(1024);
     let (h2, connection) = builder.handshake::<_, Bytes>(conn).await.unwrap();
-    smol::spawn(async move {
-        connection.await.unwrap();
-    }).detach();
+    let client_driver = smol::spawn(connection);
     let mut h2 = h2.ready().await.unwrap();
+    let keep_client_open = h2.clone();
 
     const CHUNK: &[u8] = b"backpressure test data chunk!\n";
     const TOTAL_LEN: usize = CHUNK.len() * 2000;
@@ -2388,10 +2387,12 @@ fn h2_connect_backpressure_respected() {
         assert_eq!(received, TOTAL_LEN);
     });
 
+    let (upgrade_tx, upgrade_rx) = oneshot::channel();
+    let upgrade_tx = Mutex::new(Some(upgrade_tx));
     let svc = service_fn(move |req: Request<IncomingBody>| {
         let on_upgrade = hyper::upgrade::on(req);
 
-        smol::spawn(async move {
+        let upgrade_task = smol::spawn(async move {
             let mut upgraded = HyperIo::new(on_upgrade.await.expect("on_upgrade"));
 
             for _ in 0..2000 {
@@ -2399,7 +2400,8 @@ fn h2_connect_backpressure_respected() {
             }
 
             upgraded.close().await.unwrap();
-        }).detach();
+        });
+        assert!(upgrade_tx.lock().unwrap().take().unwrap().send(upgrade_task).is_ok());
 
         future::ok::<_, hyper::Error>(
             Response::builder()
@@ -2411,12 +2413,17 @@ fn h2_connect_backpressure_respected() {
 
     let (socket, _) = listener.accept().await.unwrap();
     let socket = FuturesIo::new(socket);
-    http2::Builder::new(SmolExecutor)
-        .serve_connection(socket, svc)
-        .await
-        .unwrap();
-
-    client_handle.await;
+    let builder = http2::Builder::new(SmolExecutor);
+    let mut server_driver = Box::pin(builder.serve_connection(socket, svc));
+    match future::select(client_handle, server_driver.as_mut()).await {
+        future::Either::Left(((), _)) => {}
+        future::Either::Right((result, _)) => panic!("server ended before the client: {result:?}"),
+    }
+    server_driver.as_mut().graceful_shutdown();
+    server_driver.await.unwrap();
+    drop(keep_client_open);
+    client_driver.await.unwrap();
+    upgrade_rx.await.unwrap().await;
     });
 }
 

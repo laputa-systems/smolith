@@ -53,6 +53,85 @@ async fn tls_pair(alpn: Option<&[u8]>) -> (ServerTls, ClientTls) {
 }
 
 #[test]
+fn tls_setup_deadline_releases_a_silent_handshake_and_keeps_an_established_stream() {
+    smol::block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (error_tx, error_rx) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let server = smol::spawn(async move {
+            let error_tx = Mutex::new(Some(error_tx));
+            let mut config = fixture_server_config();
+            config.alpn_protocols = vec![b"http/1.1".to_vec()];
+            h12tiny::server::serve_tls(
+                listener,
+                TlsAcceptor::from(Arc::new(config)),
+                service_fn(|_| async {
+                    async_io::Timer::after(Duration::from_millis(200)).await;
+                    Ok::<_, Infallible>(Response::new(FullBody::from_static(b"ok")))
+                }),
+                BoxExecutor::new(SmolExecutor),
+            )
+            .setup_timeout(Duration::from_millis(50))
+            .unwrap()
+            .max_connections(1)
+            .on_connection_error(move |error| {
+                if let Some(error_tx) = error_tx.lock().unwrap().take() {
+                    let _ = error_tx.send(error);
+                }
+            })
+            .shutdown_on(shutdown_rx)
+            .await
+            .unwrap();
+        });
+
+        let silent = TcpStream::connect(address).await.unwrap();
+        let error = match future::select(
+            Box::pin(error_rx),
+            Box::pin(async_io::Timer::after(Duration::from_secs(2))),
+        )
+        .await
+        {
+            Either::Left((result, _)) => result.expect("setup error was dropped"),
+            Either::Right(_) => panic!("silent TLS handshake was not timed out"),
+        };
+        let timed_out = error
+            .downcast_ref::<std::io::Error>()
+            .expect("setup timeout is an IO error");
+        assert_eq!(timed_out.kind(), std::io::ErrorKind::TimedOut);
+        drop(silent);
+
+        let stream = TcpStream::connect(address).await.unwrap();
+        let mut peer = TlsConnector::from(Arc::new(fixture_client_config()))
+            .connect(
+                rustls::pki_types::ServerName::try_from("localhost").unwrap(),
+                stream,
+            )
+            .await
+            .unwrap();
+        peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+        peer.flush().await.unwrap();
+        let mut response = [0_u8; 128];
+        let read = match future::select(
+            Box::pin(peer.read(&mut response)),
+            Box::pin(async_io::Timer::after(Duration::from_secs(2))),
+        )
+        .await
+        {
+            Either::Left((result, _)) => result.unwrap(),
+            Either::Right(_) => panic!("established TLS stream ended with the setup deadline"),
+        };
+        assert!(response[..read].windows(2).any(|window| window == b"ok"), "response: {:?}", &response[..read]);
+
+        drop(peer);
+        shutdown_tx.send(()).unwrap();
+        server.await;
+    });
+}
+
+#[test]
 fn tls_shutdown_cancels_incomplete_h2_preface_without_peer_disconnect() {
     smol::block_on(async {
         for prefix in [b"".as_slice(), b"PRI * HTTP/2.0\r\n".as_slice()] {

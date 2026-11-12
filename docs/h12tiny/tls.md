@@ -58,12 +58,11 @@ stats the selected store and reloads changed files. A failed reload fails
 verification. There is no background polling thread. macOS native evaluation
 consults the OS when verification runs instead of maintaining a PEM snapshot.
 
-Managed configurations currently retain Rustls's default session-resumption
-cache. Resumption can reuse earlier certificate approval without invoking the
-verifier, so a new transport connection does not guarantee refreshed trust.
-Established pooled connections also keep serving. Full certificate-verifying
-handshakes use current trust; resumption freshness is deferred work in
-[the backlog](../TODO.md).
+Managed system-trust configurations disable TLS 1.2 and TLS 1.3 session
+resumption, including configurations with a client identity. Every new
+connection runs certificate verification against current trust. Established
+pooled connections keep serving. Explicit-root and caller-supplied Rustls
+configurations retain the caller's resumption policy.
 
 `Client::new()` and `Connector::new()` load lazily so their constructors
 stay infallible: the first handshake reports an unusable store as a TLS

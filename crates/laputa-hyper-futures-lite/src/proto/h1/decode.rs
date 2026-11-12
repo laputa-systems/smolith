@@ -1101,7 +1101,6 @@ mod tests {
     #[cfg(all(feature = "nightly", not(miri)))]
     #[bench]
     fn bench_decode_chunked_1kb(b: &mut test::Bencher) {
-        let rt = new_runtime();
 
         const LEN: usize = 1024;
         let mut vec = Vec::new();
@@ -1114,7 +1113,7 @@ mod tests {
 
         b.iter(|| {
             let mut decoder = Decoder::chunked(None, None);
-            rt.block_on(async {
+            crate::test_support::block_on(async {
                 let mut raw = content.clone();
                 let chunk = decoder
                     .decode_fut(&mut raw)
@@ -1130,7 +1129,6 @@ mod tests {
     #[cfg(all(feature = "nightly", not(miri)))]
     #[bench]
     fn bench_decode_length_1kb(b: &mut test::Bencher) {
-        let rt = new_runtime();
 
         const LEN: usize = 1024;
         let content = Bytes::from(&[0; LEN][..]);
@@ -1138,7 +1136,7 @@ mod tests {
 
         b.iter(|| {
             let mut decoder = Decoder::length(LEN as u64);
-            rt.block_on(async {
+            crate::test_support::block_on(async {
                 let mut raw = content.clone();
                 let chunk = decoder
                     .decode_fut(&mut raw)
@@ -1149,14 +1147,6 @@ mod tests {
                 assert_eq!(chunk.len(), LEN);
             });
         });
-    }
-
-    #[cfg(feature = "nightly")]
-    fn new_runtime() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("rt build")
     }
 
     #[test]

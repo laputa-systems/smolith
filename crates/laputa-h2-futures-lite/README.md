@@ -24,9 +24,8 @@ The optional `stream` feature adds futures Stream implementations, and
 `tracing` enables instrumentation. `unstable` exposes APIs without compatibility
 guarantees.
 
-The inherited examples still require adaptation from Tokio. The integration
-harness uses futures-I/O and runs in the
-[fork gate](../../docs/verification.md). Upstream h2spec claims do not establish
+The integration harness uses futures-I/O and runs in the
+[fork gate](../../docs/h12tiny/verification.md). Upstream h2spec claims do not establish
 conformance for this adaptation.
 
 ## License

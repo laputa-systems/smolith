@@ -37,9 +37,6 @@ rustybench = "0.4"
 easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
 fastrand = { package = "laputa-fastrand", path = "../fastrand" }
 
-[target.'cfg(target_family = "wasm")'.dev-dependencies]
-wasm-bindgen-test = "0.3"
-
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 

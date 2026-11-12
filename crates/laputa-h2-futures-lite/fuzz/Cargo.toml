@@ -12,15 +12,20 @@ cargo-fuzz = true
 [dependencies]
 arbitrary = { version = "1",  features = ["derive"] }
 libfuzzer-sys = { version = "0.4.0", features = ["arbitrary-derive"] }
-tokio = { version = "1", features = [ "full" ] }
-h2 = { path = "../", features = [ "unstable" ] }
-h2-support = { path = "../tests/h2-support" }
+futures-lite = { workspace = true }
+h2 = { workspace = true, features = [ "unstable" ] }
+h2-support = { workspace = true }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 http = "1"
 
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
+
+[workspace.dependencies]
+h2 = { package = "laputa-h2-futures-lite", path = "..", version = "=0.4.20-beta.2" }
+h2-support = { path = "../tests/h2-support", version = "0.1.0" }
+futures-lite = { package = "laputa-futures-lite", path = "../../futures-lite", version = "0.3.0", features = ["std"] }
 
 [[bin]]
 name = "fuzz_client"

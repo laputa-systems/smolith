@@ -5,9 +5,6 @@
 use event_listener_strategy::{easy_wrapper, EventListenerFuture, Strategy};
 use std::{marker::PhantomData, pin::Pin, task::Poll};
 
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_test::wasm_bindgen_test as test;
-
 #[test]
 fn easy_wrapper_generics() {
     // Easy case.

@@ -27,9 +27,6 @@ portable-atomic-util = { version = "0.2", default-features = false, features = [
 easy-parallel = { package = "laputa-easy-parallel", path = "../easy-parallel" }
 futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 
-[target.'cfg(target_family = "wasm")'.dev-dependencies]
-wasm-bindgen-test = "0.3.37"
-
 [features]
 default = ["std"]
 std = ["concurrent-queue/std", "event-listener-strategy/std"]

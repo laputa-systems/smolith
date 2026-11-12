@@ -7,10 +7,6 @@ use std::task::{Context, Poll};
 pub(crate) struct Settings {
     /// Our local SETTINGS sync state with the remote.
     local: Local,
-    /// Received SETTINGS frame pending processing. The ACK must be written to
-    /// the socket first then the settings applied **before** receiving any
-    /// further frames.
-    remote: Option<frame::Settings>,
     /// Whether the connection has received the initial SETTINGS frame from the
     /// remote peer.
     has_received_remote_initial_settings: bool,
@@ -33,7 +29,6 @@ impl Settings {
             // We assume the initial local SETTINGS were flushed during
             // the handshake process.
             local: Local::WaitingAck(local),
-            remote: None,
             has_received_remote_initial_settings: false,
         }
     }
@@ -79,10 +74,14 @@ impl Settings {
                 }
             }
         } else {
-            // We always ACK before reading more frames, so `remote` should
-            // always be none!
-            assert!(self.remote.is_none());
-            self.remote = Some(frame);
+            let is_initial = self.mark_remote_initial_settings_as_received();
+            streams.apply_remote_settings(&frame, is_initial)?;
+            if let Some(val) = frame.header_table_size() {
+                codec.set_send_header_table_size(val as usize);
+            }
+            if let Some(val) = frame.max_frame_size() {
+                codec.set_max_send_frame_size(val as usize);
+            }
             Ok(())
         }
     }
@@ -108,45 +107,15 @@ impl Settings {
         !has_received
     }
 
-    pub(crate) fn poll_send<T, B, C, P>(
+    pub(crate) fn poll_send<T, B>(
         &mut self,
         cx: &mut Context,
         dst: &mut Codec<T, B>,
-        streams: &mut Streams<C, P>,
     ) -> Poll<Result<(), Error>>
     where
         T: AsyncWrite + Unpin,
         B: Buf,
-        C: Buf,
-        P: Peer,
     {
-        if let Some(settings) = self.remote.clone() {
-            if !dst.poll_ready(cx)?.is_ready() {
-                return Poll::Pending;
-            }
-
-            // Create an ACK settings frame
-            let frame = frame::Settings::ack();
-
-            // Buffer the settings frame
-            dst.buffer(frame.into()).expect("invalid settings frame");
-
-            tracing::trace!("ACK sent; applying settings");
-
-            let is_initial = self.mark_remote_initial_settings_as_received();
-            streams.apply_remote_settings(&settings, is_initial)?;
-
-            if let Some(val) = settings.header_table_size() {
-                dst.set_send_header_table_size(val as usize);
-            }
-
-            if let Some(val) = settings.max_frame_size() {
-                dst.set_max_send_frame_size(val as usize);
-            }
-        }
-
-        self.remote = None;
-
         match &self.local {
             Local::ToSend(settings) => {
                 if !dst.poll_ready(cx)?.is_ready() {

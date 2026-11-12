@@ -9,7 +9,7 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 - `make test` runs the workspace suite, the h12tiny suite with all features, and the maintained Hyper tests.
 - `make lint` is clippy for the workspace and for the maintained HTTP and Hyper targets. This repo has no rustfmt.
 - `python3 -m unittest discover -s tests -p 'test_*.py'` checks release-graph validation and staging isolation without compiling Rust.
-- `tools/graph-gate.sh` checks owned edges and rejects `tokio` on normal or build dependencies.
+- `tools/graph-gate.sh` checks owned edges and rejects `tokio` on all dependency kinds.
 - `tools/advisory-scan.sh` maps `UPSTREAM.toml` through the RustSec database, including optional normal features. `--offline` skips the refresh.
 - `tools/stage.sh` publishes every owned crate to a local registry and builds consumers from that index.
 - `sh scripts/check-features.sh` checks HTTP feature isolation outside an all-features build.
@@ -27,7 +27,7 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 - A versionless path edge is only a member dev-dependency, and it sets `package = "laputa-..."`.
 - A dependency that must build with its own defaults off sets `default-features = false` on the workspace entry. A member line cannot turn workspace defaults off.
 - `futures-core` and `futures-io` are the shared trait identities.
-- No `tokio` crate on a normal or build edge.
+- No `tokio` crate on any dependency edge, including development and target-specific edges.
 - Windows is unsupported.
 
 ## Docs

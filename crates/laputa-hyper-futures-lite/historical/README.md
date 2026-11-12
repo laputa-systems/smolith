@@ -1,1 +1,0 @@
-Inherited Hyper examples and benches call Tokio APIs. This futures-I/O fork does not build them. The sources stay here as provenance and are not Cargo targets. Maintained protocol tests remain registered and require the `full` feature.

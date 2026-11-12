@@ -1186,24 +1186,19 @@ mod tests {
     #[bench]
     fn bench_read_head_short(b: &mut ::test::Bencher) {
         use super::*;
-        use crate::common::io::Compat;
         let s = b"GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n";
         let len = s.len();
         b.bytes = len as u64;
 
         // an empty IO, we'll be skipping and using the read buffer anyways
         let io = crate::test_support::mock_io::Builder::new().build();
-        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io);
+        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(crate::test_support::FuturesIo::new(io));
         *conn.io.read_buf_mut() = ::bytes::BytesMut::from(&s[..]);
         conn.state.cached_headers = Some(HeaderMap::with_capacity(2));
 
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
 
         b.iter(|| {
-            rt.block_on(futures_lite::future::poll_fn(|cx| {
+            crate::test_support::block_on(futures_lite::future::poll_fn(|cx| {
                 match conn.poll_read_head(cx) {
                     Poll::Ready(Some(Ok(x))) => {
                         ::test::black_box(&x);

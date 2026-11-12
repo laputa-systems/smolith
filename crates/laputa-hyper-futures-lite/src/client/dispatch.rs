@@ -561,14 +561,11 @@ mod tests {
     fn giver_queue_throughput(b: &mut test::Bencher) {
         use crate::{body::Incoming, Request, Response};
 
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
         let (mut tx, mut rx) = channel::<Request<Incoming>, Response<Incoming>>();
 
         b.iter(move || {
             tx.send(Request::new(Incoming::empty())).unwrap();
-            rt.block_on(async {
+            crate::test_support::block_on(async {
                 loop {
                     let poll_once = PollOnce(&mut rx);
                     let opt = poll_once.await;
@@ -583,12 +580,9 @@ mod tests {
     #[cfg(feature = "nightly")]
     #[bench]
     fn giver_queue_not_ready(b: &mut test::Bencher) {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
         let (_tx, mut rx) = channel::<i32, ()>();
         b.iter(move || {
-            rt.block_on(async {
+            crate::test_support::block_on(async {
                 let poll_once = PollOnce(&mut rx);
                 assert!(poll_once.await.is_none());
             });

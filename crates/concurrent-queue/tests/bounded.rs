@@ -9,9 +9,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(not(target_family = "wasm"))]
 use std::thread;
 
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_test::wasm_bindgen_test as test;
-
 #[test]
 fn smoke() {
     let q = ConcurrentQueue::bounded(2);

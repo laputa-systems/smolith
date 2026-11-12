@@ -7,7 +7,7 @@
 //! begin the HTTP/2 handshake. See [here](../index.html#handshake) for more
 //! details.
 //!
-//! This could be as basic as using Tokio's [`TcpListener`] to accept
+//! This could be as basic as using a futures-I/O `TcpListener` to accept
 //! connections, but usually it means using either ALPN or HTTP/1.1 protocol
 //! upgrades.
 //!

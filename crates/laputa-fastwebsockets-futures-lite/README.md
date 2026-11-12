@@ -28,6 +28,4 @@ Applications own subprotocols, authentication, task ownership, and message polic
 Compression is unsupported.
 
 See the [API documentation](https://docs.rs/laputa-fastwebsockets-futures-lite)
-for the frame interfaces. The files under `examples/`, `autobahn/`, and
-`benches/` are inherited upstream tools. They are not adapted runnable examples
-for this fork, and their historical results do not verify this adaptation.
+for the frame interfaces. The fuzz targets use futures-I/O transports.

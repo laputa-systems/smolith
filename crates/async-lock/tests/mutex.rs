@@ -9,12 +9,6 @@ use futures_lite::future;
 
 use common::check_yields_when_contended;
 
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_test::wasm_bindgen_test as test;
-
-#[cfg(target_family = "wasm")]
-wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
 #[test]
 fn smoke() {
     future::block_on(async {

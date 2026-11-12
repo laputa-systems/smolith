@@ -398,6 +398,7 @@ impl ServerCertVerifier for SystemVerifier {
 ///
 /// The verifier refreshes the store as it changes. Explicit roots and
 /// caller-provided verifiers must use another constructor.
+/// Session resumption is disabled so every new connection verifies current trust.
 pub fn system_client_config(
     provider: Arc<CryptoProvider>,
     alpn_protocols: Vec<Vec<u8>>,
@@ -468,6 +469,7 @@ fn finish_system_config(
         .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
     config.alpn_protocols = alpn_protocols;
+    config.resumption = rustls::client::Resumption::disabled();
     Ok(config)
 }
 
@@ -513,6 +515,7 @@ pub fn system_client_config_with_auth_and_source(
             )
         })?;
     config.alpn_protocols = alpn_protocols;
+    config.resumption = rustls::client::Resumption::disabled();
     Ok((config, source))
 }
 

@@ -86,6 +86,89 @@ fn isolated(test_name: &str) -> bool {
     true
 }
 
+fn handshake_kind(
+    client: Arc<rustls::ClientConfig>,
+    server: Arc<rustls::ServerConfig>,
+) -> Result<rustls::HandshakeKind, rustls::Error> {
+    let name = rustls::pki_types::ServerName::try_from("localhost").unwrap();
+    let mut client = rustls::ClientConnection::new(client, name)?;
+    let mut server = rustls::ServerConnection::new(server)?;
+    for _ in 0..32 {
+        let mut sent = Vec::new();
+        client.write_tls(&mut sent).unwrap();
+        let client_sent = sent.len();
+        if !sent.is_empty() {
+            server.read_tls(&mut std::io::Cursor::new(sent)).unwrap();
+            server.process_new_packets()?;
+        }
+        let mut sent = Vec::new();
+        server.write_tls(&mut sent).unwrap();
+        let server_sent = sent.len();
+        if !sent.is_empty() {
+            client.read_tls(&mut std::io::Cursor::new(sent)).unwrap();
+            client.process_new_packets()?;
+        }
+        if client_sent == 0 && server_sent == 0 {
+            assert!(!client.is_handshaking());
+            assert!(!server.is_handshaking());
+            return Ok(client.handshake_kind().unwrap());
+        }
+    }
+    panic!("in-memory handshake did not settle");
+}
+
+#[test]
+fn managed_trust_rechecks_every_connection_without_resumption() {
+    if isolated("managed_trust_rechecks_every_connection_without_resumption") {
+        return;
+    }
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+
+    let chain = tls_system::p384_chain();
+    let other = tls_system::p384_chain();
+    let dir = tls_system::TempDir::new();
+    let provider = Arc::new(rustls_graviola::default_provider());
+    for version in [&rustls::version::TLS12, &rustls::version::TLS13] {
+        let mut server = rustls::ServerConfig::builder_with_provider(provider.clone())
+            .with_protocol_versions(&[version]).unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![chain.server_der.clone().into(), chain.intermediate_der.clone().into(), chain.issuing_der.clone().into()],
+                PrivateKeyDer::try_from(chain.server_key_der.clone()).unwrap(),
+            ).unwrap();
+        server.session_storage = rustls::server::ServerSessionMemoryCache::new(32);
+        let server = Arc::new(server);
+
+        for with_identity in [false, true] {
+            let bundle = tls_system::write_bundle(dir.path(), "bundle.pem", &[&chain.root_pem]);
+            tls_system::set_bundle_file(&bundle);
+            let mut builder = ClientTlsConfigBuilder::new().protocol_versions([version]);
+            if with_identity {
+                builder = builder.client_auth(
+                    vec![CertificateDer::from(chain.server_der.clone())],
+                    PrivateKeyDer::try_from(chain.server_key_der.clone()).unwrap(),
+                );
+            }
+            let client = Arc::new(builder.build().unwrap());
+            assert_eq!(handshake_kind(client.clone(), server.clone()).unwrap(), rustls::HandshakeKind::Full);
+            assert_eq!(handshake_kind(client.clone(), server.clone()).unwrap(), rustls::HandshakeKind::Full);
+
+            tls_system::write_bundle(dir.path(), "bundle.pem", &[&other.root_pem]);
+            assert!(handshake_kind(client.clone(), server.clone()).is_err(), "removed trust must reject the peer");
+            std::fs::write(&bundle, "invalid trust store").unwrap();
+            let error = handshake_kind(client, server.clone()).expect_err("invalid store must fail closed");
+            assert!(error.to_string().contains("system trust store"), "{error}");
+        }
+
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(chain.root_der.clone().into()).unwrap();
+        let explicit = Arc::new(ClientTlsConfigBuilder::new()
+            .root_certificates(roots).protocol_versions([version]).build().unwrap());
+        assert_eq!(handshake_kind(explicit.clone(), server.clone()).unwrap(), rustls::HandshakeKind::Full);
+        assert_eq!(handshake_kind(explicit, server).unwrap(), rustls::HandshakeKind::Resumed);
+    }
+}
+
 #[test]
 fn trusted_system_root_accepted() {
     if isolated("trusted_system_root_accepted") {

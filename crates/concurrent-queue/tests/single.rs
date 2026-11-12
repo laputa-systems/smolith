@@ -7,9 +7,6 @@ use easy_parallel::Parallel;
 #[cfg(not(target_family = "wasm"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_test::wasm_bindgen_test as test;
-
 #[test]
 fn smoke() {
     let q = ConcurrentQueue::bounded(1);

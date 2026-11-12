@@ -1,55 +1,29 @@
 # H12T-25: Connection setup deadlines
 
-Status: draft
-
-## Summary
-
-Give the production listener a deadline for TLS acceptance and protocol
-detection, before an established HTTP driver takes over its own deadlines.
-
-## Motivation
-
-The current header timeout starts inside the selected H1 driver. Before that,
-an accepted stream may remain in protocol detection or TLS acceptance while
-occupying an admission slot. Source inspection establishes that these states
-have shutdown cancellation but no elapsed-time bound. No expiry or saturation
-experiment was run during review.
-
-## Design
-
-Recommend one setup budget measured from acceptance through completion of
-transport negotiation and protocol selection. On expiry, drop the setup
-future, release its admission slot, notify the existing error hook with a
-timeout, and finish the tracked task exactly once.
-
-Apply a nonzero setup deadline in `production()`. Keep explicit builder
-configuration available without turning the setup budget into a lifetime limit
-on response streams. Preserve shutdown cancellation and drain deadlines.
-
-Adding a field to the public `ProductionBounds` struct can break struct-literal
-callers. Choose an additive builder method or an explicitly versioned public
-change; do not accidentally alter the compatibility contract while adding the
-limit.
-
-Acceptance uses one pending-I/O connection, controlled timer completion, and
-an observed released slot. A positive setup case must retain the connection
-past that setup deadline while streaming normally. No flood test is required.
-
-## Alternatives considered
-
-- Reuse only Hyper's header timeout. Insufficient because it starts later.
-- Apply a deadline to the entire connection. Rejected because valid long-lived
-  response streams would expire.
-- Separate TLS and protocol-detection budgets. Possible, but adds settings
-  without an established need over a single acceptance-to-selection budget.
-
-## Open questions
-
-- What should the production setup default be? Recommend 10 s initially,
-  matching the current header preset while keeping the scopes distinct.
-- Preserve the current `ProductionBounds` struct shape or change it in the
-  next minor release? Recommend an additive builder method for compatibility.
+Status: implemented
 
 ## Decision
 
-Pending. The exact API and default are proposals, not current behavior.
+`Serve::setup_timeout` and `TlsServe::setup_timeout` configure an optional
+nonzero setup budget. Both production presets use 10 seconds. The public
+`ProductionBounds` struct keeps its existing fields.
+
+The timer starts when the listener accepts the stream, before executor dispatch.
+Cleartext setup ends when protocol detection selects HTTP/1 or HTTP/2. TLS setup
+ends when the handshake supplies ALPN for protocol selection. Established
+response streams and shutdown draining keep their separate lifetimes.
+
+Expiry drops setup I/O, reports `io::ErrorKind::TimedOut` through the connection
+error hook, and completes the tracked task to release its admission slot.
+Shutdown still cancels pending setup.
+
+A whole-connection deadline would terminate valid long-lived responses.
+Reusing the HTTP/1 header deadline alone would leave negotiation unbounded.
+
+## Verification
+
+The detector unit test controls deadline completion directly for silent input,
+a partial H2 preface, and an established HTTP/1 request. Listener integration
+tests observe timeout errors and slot reuse for cleartext and TLS, then keep
+an established response alive past the setup budget. Shutdown and ALPN tests
+continue to pass.

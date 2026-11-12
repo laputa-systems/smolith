@@ -603,9 +603,9 @@ mod tests {
     fn send_sync_executor_of_non_send_futures() {
         crate::test_support::block_on(async {
         #[derive(Clone)]
-        struct LocalTokioExecutor;
+        struct LocalExecutor;
 
-        impl<F> crate::rt::Executor<F> for LocalTokioExecutor
+        impl<F> crate::rt::Executor<F> for LocalExecutor
         where
             F: std::future::Future + 'static, // not requiring `Send`
         {
@@ -621,7 +621,7 @@ mod tests {
                 _,
                 _,
                 http_body_util::Empty<bytes::Bytes>,
-            >(LocalTokioExecutor, io)
+            >(LocalExecutor, io)
             .await
             .unwrap();
 
@@ -637,11 +637,11 @@ mod tests {
     fn not_send_not_sync_executor_of_not_send_futures() {
         crate::test_support::block_on(async {
         #[derive(Clone)]
-        struct LocalTokioExecutor {
+        struct LocalExecutor {
             _x: std::marker::PhantomData<std::rc::Rc<()>>,
         }
 
-        impl<F> crate::rt::Executor<F> for LocalTokioExecutor
+        impl<F> crate::rt::Executor<F> for LocalExecutor
         where
             F: std::future::Future + 'static, // not requiring `Send`
         {
@@ -655,7 +655,7 @@ mod tests {
         async fn run(io: impl crate::rt::Read + crate::rt::Write + Unpin + 'static) {
             let (_sender, conn) =
                 crate::client::conn::http2::handshake::<_, _, http_body_util::Empty<bytes::Bytes>>(
-                    LocalTokioExecutor {
+                    LocalExecutor {
                         _x: Default::default(),
                     },
                     io,
@@ -675,11 +675,11 @@ mod tests {
     fn send_not_sync_executor_of_not_send_futures() {
         crate::test_support::block_on(async {
         #[derive(Clone)]
-        struct LocalTokioExecutor {
+        struct LocalExecutor {
             _x: std::marker::PhantomData<std::cell::Cell<()>>,
         }
 
-        impl<F> crate::rt::Executor<F> for LocalTokioExecutor
+        impl<F> crate::rt::Executor<F> for LocalExecutor
         where
             F: std::future::Future + 'static, // not requiring `Send`
         {
@@ -693,7 +693,7 @@ mod tests {
         async fn run(io: impl crate::rt::Read + crate::rt::Write + Unpin + 'static) {
             let (_sender, conn) =
                 crate::client::conn::http2::handshake::<_, _, http_body_util::Empty<bytes::Bytes>>(
-                    LocalTokioExecutor {
+                    LocalExecutor {
                         _x: Default::default(),
                     },
                     io,
@@ -713,9 +713,9 @@ mod tests {
     fn send_sync_executor_of_send_futures() {
         crate::test_support::block_on(async {
         #[derive(Clone)]
-        struct TokioExecutor;
+        struct TestExecutor;
 
-        impl<F> crate::rt::Executor<F> for TokioExecutor
+        impl<F> crate::rt::Executor<F> for TestExecutor
         where
             F: std::future::Future + 'static + Send,
             F::Output: Send + 'static,
@@ -731,7 +731,7 @@ mod tests {
                 _,
                 _,
                 http_body_util::Empty<bytes::Bytes>,
-            >(TokioExecutor, io)
+            >(TestExecutor, io)
             .await
             .unwrap();
 
@@ -747,12 +747,12 @@ mod tests {
     fn send_not_sync_executor_of_send_futures() {
         crate::test_support::block_on(async {
         #[derive(Clone)]
-        struct TokioExecutor {
+        struct TestExecutor {
             // !Sync
             _x: std::marker::PhantomData<std::cell::Cell<()>>,
         }
 
-        impl<F> crate::rt::Executor<F> for TokioExecutor
+        impl<F> crate::rt::Executor<F> for TestExecutor
         where
             F: std::future::Future + 'static + Send,
             F::Output: Send + 'static,
@@ -766,7 +766,7 @@ mod tests {
         async fn run(io: impl crate::rt::Read + crate::rt::Write + Send + Unpin + 'static) {
             let (_sender, conn) =
                 crate::client::conn::http2::handshake::<_, _, http_body_util::Empty<bytes::Bytes>>(
-                    TokioExecutor {
+                    TestExecutor {
                         _x: Default::default(),
                     },
                     io,

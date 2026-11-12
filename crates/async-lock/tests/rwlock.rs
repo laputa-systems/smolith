@@ -17,12 +17,6 @@ use async_lock::{
     RwLockUpgradableReadGuardArc,
 };
 
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_test::wasm_bindgen_test as test;
-
-#[cfg(target_family = "wasm")]
-wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
 #[cfg(not(target_family = "wasm"))]
 fn spawn<T: Send + 'static>(f: impl Future<Output = T> + Send + 'static) -> future::Boxed<T> {
     let (s, r) = flume::bounded(1);

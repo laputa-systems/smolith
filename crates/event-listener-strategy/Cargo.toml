@@ -27,12 +27,6 @@ portable-atomic = ["event-listener/portable-atomic"]
 [dev-dependencies]
 futures-lite = { package = "laputa-futures-lite", path = "../futures-lite" }
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }
-
-[target.'cfg(target_family = "wasm")'.dev-dependencies]
-wasm-bindgen-test = "0.3.37"
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

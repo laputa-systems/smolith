@@ -252,7 +252,6 @@ where
                 trace!("received {} bytes", n);
                 // Safety: we just read that many bytes into the
                 // uninitialized part of the buffer, so this is okay.
-                // @tokio pls give me back `poll_read_buf` thanks
                 unsafe {
                     self.read_buf.advance_mut(n);
                 }
@@ -292,9 +291,6 @@ where
                     let len = self.write_buf.chunks_vectored(&mut iovs);
                     ready!(Pin::new(&mut self.io).poll_write_vectored(cx, &iovs[..len]))?
                 };
-                // TODO(eliza): we have to do this manually because
-                // `poll_write_buf` doesn't exist in Tokio 0.3 yet...when
-                // `poll_write_buf` comes back, the manual advance will need to leave!
                 self.write_buf.advance(n);
                 debug!("flushed {} bytes", n);
                 if self.write_buf.remaining() == 0 {
@@ -845,29 +841,6 @@ mod tests {
 
         buffered.buffer(Cursor::new(Vec::new()));
     }
-
-    /*
-    TODO: needs tokio_test::io to allow configure write_buf calls
-    #[test]
-    fn write_buf_queue() {
-        let _ = pretty_env_logger::try_init();
-
-        let mock = AsyncIo::new_buf(vec![], 1024);
-        let mut buffered = Buffered::<_, Cursor<Vec<u8>>>::new(mock);
-
-
-        buffered.headers_buf().extend(b"hello ");
-        buffered.buffer(Cursor::new(b"world, ".to_vec()));
-        buffered.buffer(Cursor::new(b"it's ".to_vec()));
-        buffered.buffer(Cursor::new(b"hyper!".to_vec()));
-        assert_eq!(buffered.write_buf.queue.bufs_cnt(), 3);
-        buffered.flush().unwrap();
-
-        assert_eq!(buffered.io, b"hello world, it's hyper!");
-        assert_eq!(buffered.io.num_writes(), 1);
-        assert_eq!(buffered.write_buf.queue.bufs_cnt(), 0);
-    }
-    */
 
     #[cfg(not(miri))]
         #[test]

@@ -29,6 +29,5 @@ async fn fuzz_entry(inp: HttpSpec) {
 }
 
 fuzz_target!(|inp: HttpSpec| {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(fuzz_entry(inp));
+    futures_lite::future::block_on(fuzz_entry(inp));
 });

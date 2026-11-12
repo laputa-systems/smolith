@@ -55,6 +55,10 @@ already populated by one full test build.
 
 ## Dependencies
 
+The local `h12tiny` and `smol` path dependencies omit version requirements.
+Their manifests own the versions, so facade releases do not invalidate this
+non-published consumer. Keep `Cargo.lock` committed and build with `--locked`.
+
 The h12tiny server is runtime-neutral, so the app supplies `smol` (`laputa-smol`)
 as its executor and timer runtime. `signal-hook` supplies SIGTERM and SIGINT
 for the graceful drain. Both are already present in the root dependency graph.

@@ -389,7 +389,6 @@ mod tests {
         upgraded.downcast::<Mock>().unwrap();
     }
 
-    // TODO: replace with tokio_test::io when it can test write_buf
     struct Mock;
 
     impl Read for Mock {

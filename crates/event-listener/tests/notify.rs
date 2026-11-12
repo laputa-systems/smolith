@@ -6,9 +6,6 @@ use std::task::Context;
 use event_listener::{Event, EventListener};
 use waker_fn::waker_fn;
 
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_test::wasm_bindgen_test as test;
-
 fn is_notified(listener: &mut EventListener) -> bool {
     let waker = waker_fn(|| ());
     Pin::new(listener)
