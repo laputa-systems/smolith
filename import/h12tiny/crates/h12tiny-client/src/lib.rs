@@ -1,0 +1,1733 @@
+#![cfg(any(feature = "http1", feature = "http2"))]
+
+//! Direct-origin HTTP client with legacy Hyper-util pooling semantics.
+//!
+//! The public client accepts absolute `http` and `https` URIs. It owns origin
+//! routing, TLS/ALPN, pooling, and request normalization; Hyper continues to
+//! own all HTTP/1 and HTTP/2 protocol machinery.
+
+mod connect;
+mod normalize;
+mod pool;
+
+use std::error::Error as StdError;
+use std::fmt;
+use std::future::Future;
+use std::io;
+use std::net::SocketAddr;
+use std::num::NonZeroUsize;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+
+use futures_util::future::{self, Either};
+use http::{Method, Request, Response, Version};
+use hyper::body::{Body, Incoming};
+
+use self::normalize::PoolKey;
+use self::pool::{CheckoutError, Poolable, Protocol as PoolProtocol, Reservation};
+use h12tiny_core::runtime::{AsyncIoTimer, BoxExecutor, BoxSendFuture};
+
+#[cfg(feature = "tls")]
+pub use connect::ClientTlsConfigBuilder;
+#[cfg(feature = "tls")]
+pub use h12tiny_tls_system::{ClientTrustSource, SystemTrustSource};
+pub use connect::{
+    Connected, ConnectionIo, Connector, ConnectorBuilder, DialError, DialFuture, Dialer,
+    ResolveFuture, Resolver, SystemResolver, TcpConnected, TcpConnectionIo, TcpDialFuture,
+    TcpDialer,
+};
+/// Futures-I/O traits accepted by [`TcpDialer`] streams.
+pub use futures_io::{AsyncRead, AsyncWrite};
+
+/// Errors are deliberately classified by the endpoint layer rather than
+/// exposing connector/protocol implementation types in the public contract.
+#[derive(Debug)]
+pub struct Error {
+    kind: ErrorKind,
+    source: Option<Box<dyn StdError + Send + Sync>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ErrorKind {
+    Canceled,
+    UnsupportedScheme,
+    /// The per-request DNS phase exceeded its deadline.
+    DnsTimeout,
+    /// The per-request TCP establishment phase exceeded its deadline.
+    ConnectTimeout,
+    /// The per-request TLS and ALPN phase exceeded its deadline.
+    TlsTimeout,
+    /// The per-request request-dispatch and response-header phase exceeded its deadline.
+    HeadersTimeout,
+    Connect,
+    Tls,
+    Alpn,
+    Handshake,
+    SendRequest,
+    UnsupportedMethod,
+    UnsupportedVersion,
+    AbsoluteUriRequired,
+    InvalidPort,
+    ProtocolUnavailable,
+}
+
+impl Error {
+    fn new(kind: ErrorKind) -> Self {
+        Self { kind, source: None }
+    }
+
+    fn with_source(kind: ErrorKind, source: impl Into<Box<dyn StdError + Send + Sync>>) -> Self {
+        Self {
+            kind,
+            source: Some(source.into()),
+        }
+    }
+
+    pub fn kind(&self) -> ErrorKind {
+        self.kind
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self.kind {
+            ErrorKind::Canceled => "request was cancelled before it could be sent",
+            ErrorKind::UnsupportedScheme => "request URI scheme is unsupported",
+            ErrorKind::DnsTimeout => "DNS resolution timed out",
+            ErrorKind::ConnectTimeout => "TCP connection establishment timed out",
+            ErrorKind::TlsTimeout => "TLS negotiation timed out",
+            ErrorKind::HeadersTimeout => "request dispatch or response headers timed out",
+            ErrorKind::Connect => "connection establishment failed",
+            ErrorKind::Tls => "TLS negotiation or certificate validation failed",
+            ErrorKind::Alpn => "TLS ALPN did not select an allowed HTTP protocol",
+            ErrorKind::Handshake => "HTTP connection handshake failed",
+            ErrorKind::SendRequest => "request dispatch failed",
+            ErrorKind::UnsupportedMethod => "request method is unsupported for this HTTP version",
+            ErrorKind::UnsupportedVersion => "request HTTP version is unsupported",
+            ErrorKind::AbsoluteUriRequired => "client requests require an absolute URI",
+            ErrorKind::InvalidPort => "request URI contains an invalid explicit port",
+            ErrorKind::ProtocolUnavailable => "the selected protocol was not enabled in this build",
+        })
+    }
+}
+
+/// Optional deadlines for one request's transport phases.
+///
+/// These values are never stored in the client or its origin pool. A reused
+/// connection therefore skips DNS, TCP, TLS, and ALPN phases, while every
+/// request receives its own `headers_timeout` race. h12tiny deliberately has
+/// no whole-request deadline: callers that stream a response body must keep
+/// the body-idle contract at their own boundary.
+///
+/// DNS, TCP, and TLS limits are enforced by h12tiny's default direct-origin
+/// connector. A custom [`Dialer`] owns opaque establishment; a [`TcpDialer`]
+/// similarly owns its DNS/TCP internals. Both receive these options and must
+/// enforce the phases they own, while h12tiny continues to enforce its own
+/// TLS and ALPN phase after a custom TCP dialer returns.
+///
+/// Every deadline must be greater than zero; a zero duration would expire
+/// before any work starts and is rejected instead of silently timing out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RequestOptions {
+    dns_timeout: Option<Duration>,
+    connect_timeout: Option<Duration>,
+    tls_timeout: Option<Duration>,
+    headers_timeout: Option<Duration>,
+}
+
+impl RequestOptions {
+    /// Starts with no request-scoped phase deadlines.
+    pub const fn new() -> Self {
+        Self {
+            dns_timeout: None,
+            connect_timeout: None,
+            tls_timeout: None,
+            headers_timeout: None,
+        }
+    }
+
+    /// Limits DNS resolution for the default direct-origin connector.
+    pub fn with_dns_timeout(mut self, timeout: Duration) -> io::Result<Self> {
+        require_positive_timeout(timeout)?;
+        self.dns_timeout = Some(timeout);
+        Ok(self)
+    }
+
+    /// Returns the DNS deadline selected for this request.
+    pub const fn dns_timeout(self) -> Option<Duration> {
+        self.dns_timeout
+    }
+
+    /// Limits aggregate TCP establishment across all resolved addresses.
+    ///
+    /// A custom [`Dialer`] or [`TcpDialer`] receives this value and enforces
+    /// its own TCP policy without h12tiny conflating it with DNS time.
+    pub fn with_connect_timeout(mut self, timeout: Duration) -> io::Result<Self> {
+        require_positive_timeout(timeout)?;
+        self.connect_timeout = Some(timeout);
+        Ok(self)
+    }
+
+    /// Returns the aggregate TCP-establishment deadline selected for this request.
+    pub const fn connect_timeout(self) -> Option<Duration> {
+        self.connect_timeout
+    }
+
+    /// Limits Rustls negotiation and ALPN after TCP is established.
+    pub fn with_tls_timeout(mut self, timeout: Duration) -> io::Result<Self> {
+        require_positive_timeout(timeout)?;
+        self.tls_timeout = Some(timeout);
+        Ok(self)
+    }
+
+    /// Returns the TLS and ALPN deadline selected for this request.
+    pub const fn tls_timeout(self) -> Option<Duration> {
+        self.tls_timeout
+    }
+
+    /// Limits request dispatch through receipt of response headers.
+    pub fn with_headers_timeout(mut self, timeout: Duration) -> io::Result<Self> {
+        require_positive_timeout(timeout)?;
+        self.headers_timeout = Some(timeout);
+        Ok(self)
+    }
+
+    /// Returns the request-dispatch and response-header deadline selected for this request.
+    pub const fn headers_timeout(self) -> Option<Duration> {
+        self.headers_timeout
+    }
+
+    fn has_connection_timeout(self) -> bool {
+        self.dns_timeout.is_some() || self.connect_timeout.is_some() || self.tls_timeout.is_some()
+    }
+}
+
+fn require_positive_timeout(timeout: Duration) -> io::Result<()> {
+    if timeout.is_zero() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "timeout must be greater than zero",
+        ));
+    }
+    Ok(())
+}
+
+/// Transport protocol policy for a client.
+///
+/// One value controls pool routing and, for the built-in connector, TLS ALPN.
+/// Assigning a new value replaces the previous policy completely, so a later
+/// selection never inherits ALPN restrictions from an earlier one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Protocol {
+    /// Negotiates the highest protocol compiled into the client.
+    #[default]
+    Auto,
+    /// Uses HTTP/1.1 and offers only `http/1.1` over TLS.
+    #[cfg(feature = "http1")]
+    Http1Only,
+    /// Requires HTTP/2 over the configured TLS ALPN offerings.
+    #[cfg(feature = "http2")]
+    Http2Only,
+}
+
+impl Protocol {
+    fn pool_protocol(self) -> PoolProtocol {
+        match self {
+            Self::Auto => default_protocol(),
+            #[cfg(feature = "http1")]
+            Self::Http1Only => PoolProtocol::Http1,
+            #[cfg(feature = "http2")]
+            Self::Http2Only => PoolProtocol::Http2,
+        }
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn StdError + 'static))
+    }
+}
+
+/// Protocol selected for a client connection event.
+///
+/// This is intentionally separate from Hyper's version type: it describes a
+/// reusable endpoint session, not an individual request or response message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ConnectionProtocol {
+    Http1,
+    Http2,
+}
+
+/// Immutable facts about the connection that produced a response.
+///
+/// Default TCP connections populate both socket addresses. Custom [`Dialer`]
+/// implementations can attach addresses through [`Connected::with_addresses`]
+/// when their transport has that information. `connect_duration` covers the
+/// whole connector operation, including default DNS, TCP, and TLS work;
+/// `handshake_duration` covers h12tiny's HTTP/1 or HTTP/2 session handshake.
+/// Neither duration includes request dispatch, response-header latency, or
+/// response-body consumption.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConnectionInfo {
+    protocol: ConnectionProtocol,
+    local_addr: Option<SocketAddr>,
+    peer_addr: Option<SocketAddr>,
+    connect_duration: Option<Duration>,
+    handshake_duration: Option<Duration>,
+}
+
+impl ConnectionInfo {
+    pub(crate) const fn new(protocol: ConnectionProtocol) -> Self {
+        Self {
+            protocol,
+            local_addr: None,
+            peer_addr: None,
+            connect_duration: None,
+            handshake_duration: None,
+        }
+    }
+
+    /// Returns the HTTP capability negotiated for this connection.
+    pub const fn protocol(self) -> ConnectionProtocol {
+        self.protocol
+    }
+
+    /// Returns the local socket address when the connector reported one.
+    pub const fn local_addr(self) -> Option<SocketAddr> {
+        self.local_addr
+    }
+
+    /// Returns the peer socket address when the connector reported one.
+    pub const fn peer_addr(self) -> Option<SocketAddr> {
+        self.peer_addr
+    }
+
+    /// Returns the complete connection-establishment duration when measured.
+    pub const fn connect_duration(self) -> Option<Duration> {
+        self.connect_duration
+    }
+
+    /// Returns the HTTP session-handshake duration when measured.
+    pub const fn handshake_duration(self) -> Option<Duration> {
+        self.handshake_duration
+    }
+}
+
+/// Per-response transport information stored in a response extension.
+///
+/// Read it with [`ResponseInfo::from_response`] immediately or after body
+/// consumption; response extensions outlive the streaming body. It is
+/// intentionally a narrow transport fact, not an application metrics API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResponseInfo {
+    connection: ConnectionInfo,
+    reused: bool,
+}
+
+impl ResponseInfo {
+    /// Returns h12tiny's transport information attached to `response`.
+    pub fn from_response<B>(response: &Response<B>) -> Option<&Self> {
+        response.extensions().get()
+    }
+
+    /// Returns the connection that produced this response.
+    pub const fn connection(self) -> ConnectionInfo {
+        self.connection
+    }
+
+    /// Reports whether this request checked out a previously pooled session.
+    pub const fn reused(self) -> bool {
+        self.reused
+    }
+}
+
+/// A rejected HTTP/2 client setting.
+///
+/// Settings are validated by [`Builder::http2_settings`] before any
+/// connection uses them, so an out-of-range value cannot reach Hyper's
+/// per-connection assertions or become an inert configuration.
+#[cfg(feature = "http2")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Http2SettingsError {
+    /// A stream window exceeded the HTTP/2 flow-control maximum.
+    StreamWindowTooLarge,
+    /// A connection window exceeded the HTTP/2 flow-control maximum.
+    ConnectionWindowTooLarge,
+    /// The maximum frame size was outside the HTTP/2 permitted range.
+    MaxFrameSizeOutOfRange,
+    /// A keep-alive interval or timeout was zero.
+    ZeroKeepAliveDuration,
+    /// A keep-alive option was configured without a keep-alive interval.
+    KeepAliveWithoutInterval,
+}
+
+#[cfg(feature = "http2")]
+impl fmt::Display for Http2SettingsError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::StreamWindowTooLarge => "HTTP/2 stream window exceeds 2^31 - 1",
+            Self::ConnectionWindowTooLarge => "HTTP/2 connection window exceeds 2^31 - 1",
+            Self::MaxFrameSizeOutOfRange => "HTTP/2 max frame size is outside 16384..=16777215",
+            Self::ZeroKeepAliveDuration => "HTTP/2 keep-alive interval and timeout must be nonzero",
+            Self::KeepAliveWithoutInterval => {
+                "HTTP/2 keep-alive timeout or idle policy requires an interval"
+            }
+        })
+    }
+}
+
+#[cfg(feature = "http2")]
+impl StdError for Http2SettingsError {}
+
+/// Stable HTTP/2 client settings independent of Hyper's builder API.
+///
+/// Every setting is opt-in: [`Http2Settings::new`] leaves Hyper's defaults
+/// untouched. Explicit flow-control window sizes disable Hyper's adaptive
+/// window unless [`Http2Settings::adaptive_window`] is set afterwards; an
+/// explicit adaptive setting wins over either window size.
+#[cfg(feature = "http2")]
+#[derive(Clone, Debug, Default)]
+pub struct Http2Settings {
+    initial_stream_window_size: Option<u32>,
+    initial_connection_window_size: Option<u32>,
+    adaptive_window: Option<bool>,
+    max_frame_size: Option<u32>,
+    max_header_list_size: Option<u32>,
+    header_table_size: Option<u32>,
+    keep_alive_interval: Option<Duration>,
+    keep_alive_timeout: Option<Duration>,
+    keep_alive_while_idle: Option<bool>,
+}
+
+#[cfg(feature = "http2")]
+impl Http2Settings {
+    /// Starts with no overrides, preserving Hyper's current defaults.
+    pub const fn new() -> Self {
+        Self {
+            initial_stream_window_size: None,
+            initial_connection_window_size: None,
+            adaptive_window: None,
+            max_frame_size: None,
+            max_header_list_size: None,
+            header_table_size: None,
+            keep_alive_interval: None,
+            keep_alive_timeout: None,
+            keep_alive_while_idle: None,
+        }
+    }
+
+    /// Sets the initial per-stream flow-control receive window.
+    pub const fn initial_stream_window_size(mut self, size: u32) -> Self {
+        self.initial_stream_window_size = Some(size);
+        self
+    }
+
+    /// Sets the initial connection-wide flow-control receive window.
+    pub const fn initial_connection_window_size(mut self, size: u32) -> Self {
+        self.initial_connection_window_size = Some(size);
+        self
+    }
+
+    /// Enables or disables Hyper's adaptive receive-window algorithm.
+    pub const fn adaptive_window(mut self, enabled: bool) -> Self {
+        self.adaptive_window = Some(enabled);
+        self
+    }
+
+    /// Sets the largest HTTP/2 frame accepted from the peer.
+    pub const fn max_frame_size(mut self, size: u32) -> Self {
+        self.max_frame_size = Some(size);
+        self
+    }
+
+    /// Sets the largest decoded HTTP/2 header list accepted from the peer.
+    pub const fn max_header_list_size(mut self, size: u32) -> Self {
+        self.max_header_list_size = Some(size);
+        self
+    }
+
+    /// Advertises the maximum HPACK dynamic-table size accepted from the peer.
+    pub const fn header_table_size(mut self, size: u32) -> Self {
+        self.header_table_size = Some(size);
+        self
+    }
+
+    /// Sends HTTP/2 keep-alive pings at this interval.
+    pub const fn keep_alive_interval(mut self, interval: Duration) -> Self {
+        self.keep_alive_interval = Some(interval);
+        self
+    }
+
+    /// Closes a connection when a keep-alive ping is not acknowledged in time.
+    ///
+    /// This has no effect until [`Self::keep_alive_interval`] is configured.
+    pub const fn keep_alive_timeout(mut self, timeout: Duration) -> Self {
+        self.keep_alive_timeout = Some(timeout);
+        self
+    }
+
+    /// Controls whether keep-alive pings continue with no active streams.
+    ///
+    /// This requires [`Self::keep_alive_interval`] to be configured.
+    pub const fn keep_alive_while_idle(mut self, enabled: bool) -> Self {
+        self.keep_alive_while_idle = Some(enabled);
+        self
+    }
+
+    /// Checks every configured value against the HTTP/2 protocol limits.
+    pub fn validate(&self) -> Result<(), Http2SettingsError> {
+        const MAX_WINDOW_SIZE: u32 = (1 << 31) - 1;
+        const MIN_MAX_FRAME_SIZE: u32 = 16_384;
+        const MAX_MAX_FRAME_SIZE: u32 = (1 << 24) - 1;
+
+        if self
+            .initial_stream_window_size
+            .is_some_and(|size| size > MAX_WINDOW_SIZE)
+        {
+            return Err(Http2SettingsError::StreamWindowTooLarge);
+        }
+        if self
+            .initial_connection_window_size
+            .is_some_and(|size| size > MAX_WINDOW_SIZE)
+        {
+            return Err(Http2SettingsError::ConnectionWindowTooLarge);
+        }
+        if self.max_frame_size.is_some_and(|size| {
+            !(MIN_MAX_FRAME_SIZE..=MAX_MAX_FRAME_SIZE).contains(&size)
+        }) {
+            return Err(Http2SettingsError::MaxFrameSizeOutOfRange);
+        }
+        if self.keep_alive_interval == Some(Duration::ZERO)
+            || self.keep_alive_timeout == Some(Duration::ZERO)
+        {
+            return Err(Http2SettingsError::ZeroKeepAliveDuration);
+        }
+        if self.keep_alive_interval.is_none()
+            && (self.keep_alive_timeout.is_some() || self.keep_alive_while_idle.is_some())
+        {
+            return Err(Http2SettingsError::KeepAliveWithoutInterval);
+        }
+        Ok(())
+    }
+
+    fn apply(&self, builder: &mut hyper::client::conn::http2::Builder<BoxExecutor>) {
+        if let Some(size) = self.initial_stream_window_size {
+            builder.initial_stream_window_size(size);
+        }
+        if let Some(size) = self.initial_connection_window_size {
+            builder.initial_connection_window_size(size);
+        }
+        if let Some(size) = self.max_frame_size {
+            builder.max_frame_size(size);
+        }
+        if let Some(size) = self.max_header_list_size {
+            builder.max_header_list_size(size);
+        }
+        if let Some(size) = self.header_table_size {
+            builder.header_table_size(size);
+        }
+        if let Some(interval) = self.keep_alive_interval {
+            builder.keep_alive_interval(interval);
+        }
+        if let Some(timeout) = self.keep_alive_timeout {
+            builder.keep_alive_timeout(timeout);
+        }
+        if let Some(while_idle) = self.keep_alive_while_idle {
+            builder.keep_alive_while_idle(while_idle);
+        }
+        if let Some(adaptive) = self.adaptive_window {
+            builder.adaptive_window(adaptive);
+        }
+    }
+}
+
+/// A discrete endpoint-lifecycle observation recorded by [`DebugEventLog`].
+///
+/// Events are best-effort development diagnostics. They do not establish a
+/// request-success guarantee and are deliberately not a metrics framework.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DebugEvent {
+    PoolCheckout {
+        origin: String,
+    },
+    ConnectionEstablished {
+        origin: String,
+        protocol: ConnectionProtocol,
+    },
+    AlpnSelected {
+        origin: String,
+        protocol: ConnectionProtocol,
+    },
+    ConnectionPooled {
+        origin: String,
+    },
+    PoolEvicted {
+        origin: String,
+    },
+    ConnectionClosed {
+        origin: String,
+    },
+    StaleRetry {
+        origin: String,
+    },
+    ConnectionFailed {
+        origin: String,
+        kind: ErrorKind,
+    },
+    DriverFailed {
+        origin: String,
+    },
+}
+
+/// An opt-in, dependency-free sink for client connection lifecycle events.
+///
+/// Clone this before passing it to [`Builder::debug_event_log`], then call
+/// [`DebugEventLog::drain`] from a test harness or debugging control path.
+/// It is intentionally pull-based: event recording never runs application
+/// callbacks while the connection pool mutex is held.
+#[derive(Clone, Default)]
+pub struct DebugEventLog(Arc<Mutex<Vec<DebugEvent>>>);
+
+impl DebugEventLog {
+    /// Returns and clears all observations recorded since the previous drain.
+    pub fn drain(&self) -> Vec<DebugEvent> {
+        std::mem::take(&mut *self.0.lock().expect("debug event log mutex poisoned"))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0
+            .lock()
+            .expect("debug event log mutex poisoned")
+            .is_empty()
+    }
+
+    pub(crate) fn record(&self, event: DebugEvent) {
+        self.0
+            .lock()
+            .expect("debug event log mutex poisoned")
+            .push(event);
+    }
+}
+
+impl fmt::Debug for DebugEventLog {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DebugEventLog")
+            .finish_non_exhaustive()
+    }
+}
+
+/// A cheaply cloneable client. Clones share one per-origin pool and one TLS
+/// policy. H2 origin coalescing is intentionally not implemented.
+pub struct Client<B> {
+    config: ClientConfig,
+    connector: Connector,
+    executor: BoxExecutor,
+    #[cfg(feature = "http1")]
+    h1_builder: hyper::client::conn::http1::Builder,
+    #[cfg(feature = "http2")]
+    h2_builder: hyper::client::conn::http2::Builder<BoxExecutor>,
+    debug_events: Option<DebugEventLog>,
+    pool: pool::Pool<PoolClient<B>, PoolKey>,
+}
+
+#[derive(Clone, Copy)]
+struct ClientConfig {
+    retry_canceled_requests: bool,
+    max_stale_retries: usize,
+    request_options: RequestOptions,
+    set_host: bool,
+    protocol: PoolProtocol,
+}
+
+#[derive(Clone, Copy)]
+struct RetryBudget {
+    max_retries: usize,
+}
+
+impl RetryBudget {
+    fn permits(self, retries: usize, method: &Method, body_empty: bool, reused: bool) -> bool {
+        reused
+            && body_empty
+            && retries < self.max_retries
+            && is_idempotent(method)
+    }
+}
+
+fn is_idempotent(method: &Method) -> bool {
+    method.is_safe() || *method == Method::PUT || *method == Method::DELETE
+}
+
+const STALE_RETRY_BACKOFF: Duration = Duration::from_millis(10);
+const MAX_POOL_CHECKOUT_RETRIES: usize = 16;
+
+fn report_driver_result<D, E>(
+    executor: BoxExecutor,
+    events: Option<DebugEventLog>,
+    origin: String,
+    driver: D,
+) where
+    D: Future<Output = Result<(), E>> + Send + 'static,
+    E: Send + 'static,
+{
+    executor.execute(async move {
+        if driver.await.is_err() {
+            if let Some(events) = events {
+                events.record(DebugEvent::DriverFailed { origin });
+            }
+        }
+    });
+}
+
+/// A future returned by [`Client::request`]. Dropping it is supported
+/// cancellation: Hyper closes an affected H1 session or resets only the H2
+/// stream, and the pool's drop guards clean up waiters/connecting markers.
+#[must_use = "futures do nothing unless polled"]
+pub struct ResponseFuture {
+    inner: Pin<Box<dyn Future<Output = Result<Response<Incoming>, Error>> + Send>>,
+}
+
+impl Future for ResponseFuture {
+    type Output = Result<Response<Incoming>, Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.inner.as_mut().poll(cx)
+    }
+}
+
+impl ResponseFuture {
+    fn error(error: Error) -> Self {
+        Self {
+            inner: Box::pin(async move { Err(error) }),
+        }
+    }
+}
+
+impl fmt::Debug for ResponseFuture {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ResponseFuture")
+    }
+}
+
+impl Client<()> {
+    pub fn builder<E>(executor: E) -> Builder
+    where
+        E: hyper::rt::Executor<BoxSendFuture> + Send + Sync + 'static,
+    {
+        Builder::new(executor)
+    }
+}
+
+impl<B> Client<B>
+where
+    B: Body + Send + Unpin + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    pub fn get(&self, uri: http::Uri) -> ResponseFuture
+    where
+        B: Default,
+    {
+        let mut request = Request::new(B::default());
+        *request.uri_mut() = uri;
+        self.request(request)
+    }
+
+    /// Starts a request with the client's default request options.
+    ///
+    /// The default is no deadlines unless [`Builder::production`] or
+    /// [`Builder::default_request_options`] configured them. This also retains
+    /// any legacy connector-wide establishment timeout configured through
+    /// [`ConnectorBuilder::connect_timeout`].
+    pub fn request(&self, request: Request<B>) -> ResponseFuture {
+        self.request_with_options(request, self.config.request_options)
+    }
+
+    /// Starts a request with deadlines that belong only to this request.
+    ///
+    /// The options are carried through pool acquisition: a checked-out pooled
+    /// connection avoids connection-establishment phases, while a new socket
+    /// receives the DNS/TCP/TLS limits before request dispatch races the
+    /// header limit. Options never participate in pool identity, so a caller
+    /// cannot accidentally fragment reusable connections by choosing a
+    /// different deadline.
+    pub fn request_with_options(
+        &self,
+        mut request: Request<B>,
+        options: RequestOptions,
+    ) -> ResponseFuture {
+        let is_connect = request.method() == Method::CONNECT;
+        match request.version() {
+            Version::HTTP_11 | Version::HTTP_2 => {}
+            Version::HTTP_10 if !is_connect => {}
+            Version::HTTP_10 => {
+                return ResponseFuture::error(Error::new(ErrorKind::UnsupportedMethod))
+            }
+            _ => return ResponseFuture::error(Error::new(ErrorKind::UnsupportedVersion)),
+        }
+
+        let key = match normalize::extract_pool_key(request.uri_mut(), is_connect) {
+            Ok(key) => key,
+            Err(error) => {
+                let kind = match error {
+                    normalize::Error::AbsoluteUriRequired => ErrorKind::AbsoluteUriRequired,
+                    normalize::Error::InvalidPort => ErrorKind::InvalidPort,
+                };
+                return ResponseFuture::error(Error::with_source(
+                    kind,
+                    error,
+                ));
+            }
+        };
+        let client = self.clone();
+        ResponseFuture {
+            inner: Box::pin(async move { client.send_request(request, key, options).await }),
+        }
+    }
+
+    async fn send_request(
+        self,
+        mut request: Request<B>,
+        key: PoolKey,
+        options: RequestOptions,
+    ) -> Result<Response<Incoming>, Error> {
+        let budget = RetryBudget {
+            max_retries: self.config.max_stale_retries,
+        };
+        let mut retries = 0;
+        loop {
+            match self.try_send_request(request, key.clone(), options).await {
+                Ok(response) => return Ok(response),
+                Err(TrySendError::Final(error)) => {
+                    if let Some(events) = &self.debug_events {
+                        events.record(DebugEvent::ConnectionFailed {
+                            origin: normalize::pool_key_origin(&key),
+                            kind: error.kind(),
+                        });
+                    }
+                    return Err(error);
+                }
+                Err(TrySendError::Retryable {
+                    request: returned_request,
+                    error,
+                    reused,
+                    absolute_uri,
+                }) => {
+                    let body_empty = returned_request.body().size_hint().exact() == Some(0);
+                    let retry = self.config.retry_canceled_requests
+                        && budget.permits(
+                            retries,
+                            returned_request.method(),
+                            body_empty,
+                            reused,
+                        );
+                    if !retry {
+                        if let Some(events) = &self.debug_events {
+                            events.record(DebugEvent::ConnectionFailed {
+                                origin: normalize::pool_key_origin(&key),
+                                kind: error.kind(),
+                            });
+                        }
+                        return Err(error);
+                    }
+                    if let Some(events) = &self.debug_events {
+                        events.record(DebugEvent::StaleRetry {
+                            origin: normalize::pool_key_origin(&key),
+                        });
+                    }
+                    retries += 1;
+                    self.connector.sleep(STALE_RETRY_BACKOFF).await;
+                    request = *returned_request;
+                    if let Some(absolute_uri) = absolute_uri {
+                        *request.uri_mut() = absolute_uri;
+                    }
+                }
+            }
+        }
+    }
+
+    async fn try_send_request(
+        &self,
+        mut request: Request<B>,
+        key: PoolKey,
+        options: RequestOptions,
+    ) -> Result<Response<Incoming>, TrySendError<B>> {
+        let mut pooled = self
+            .connection_for(key, options)
+            .await
+            .map_err(TrySendError::Final)?;
+        let absolute_uri = if pooled.is_http1() {
+            if request.version() == Version::HTTP_2 {
+                return Err(TrySendError::Final(Error::new(
+                    ErrorKind::UnsupportedVersion,
+                )));
+            }
+            let absolute_uri = request.uri().clone();
+            normalize::normalize_h1_request(&mut request, self.config.set_host);
+            Some(absolute_uri)
+        } else {
+            None
+        };
+
+        let response_info = ResponseInfo {
+            connection: pooled.connection_info,
+            reused: pooled.is_reused(),
+        };
+        let sent = match options.headers_timeout {
+            Some(timeout) => {
+                let send = Box::pin(pooled.try_send_request(request));
+                match future::select(send, self.connector.sleep(timeout)).await {
+                    Either::Left((result, _)) => result,
+                    Either::Right(_) => {
+                        return Err(TrySendError::Final(Error::new(ErrorKind::HeadersTimeout)))
+                    }
+                }
+            }
+            None => pooled.try_send_request(request).await,
+        };
+        let mut response = match sent {
+            Ok(response) => response,
+            Err(mut error) => {
+                if let Some(request) = error.take_message() {
+                    return Err(TrySendError::Retryable {
+                        request: Box::new(request),
+                        reused: pooled.is_reused(),
+                        error: Error::with_source(ErrorKind::Canceled, (*error).into_error()),
+                        absolute_uri,
+                    });
+                }
+                return Err(TrySendError::Final(Error::with_source(
+                    ErrorKind::SendRequest,
+                    (*error).into_error(),
+                )));
+            }
+        };
+        response.extensions_mut().insert(response_info);
+
+        // Hyper's H1 sender becomes reusable only once its connection driver
+        // says it is ready again. Retaining this `Pooled` value in a driver
+        // task is the legacy lifecycle invariant; response-body completion by
+        // itself is not a sufficient signal.
+        if pooled.is_http2() || !pooled.is_pool_enabled() || pooled.is_ready() {
+            drop(pooled);
+        } else {
+            let executor = self.executor.clone();
+            executor.execute(async move {
+                let _ = futures_util::future::poll_fn(|cx| pooled.poll_ready(cx)).await;
+            });
+        }
+        Ok(response)
+    }
+
+    async fn connection_for(
+        &self,
+        key: PoolKey,
+        options: RequestOptions,
+    ) -> Result<pool::Pooled<PoolClient<B>, PoolKey>, Error> {
+        let mut retries = 0;
+        loop {
+            match self.one_connection_for(key.clone(), options).await {
+                Ok(pooled) => return Ok(pooled),
+                Err(ConnectionError::Final(error)) => return Err(error),
+                Err(ConnectionError::Retry) if self.config.retry_canceled_requests => {
+                    retries += 1;
+                    if retries > MAX_POOL_CHECKOUT_RETRIES {
+                        return Err(Error::new(ErrorKind::Canceled));
+                    }
+                    self.connector.sleep(STALE_RETRY_BACKOFF).await;
+                }
+                Err(ConnectionError::Retry) => return Err(Error::new(ErrorKind::Canceled)),
+            }
+        }
+    }
+
+    async fn one_connection_for(
+        &self,
+        key: PoolKey,
+        options: RequestOptions,
+    ) -> Result<pool::Pooled<PoolClient<B>, PoolKey>, ConnectionError> {
+        if !self.pool.is_enabled() {
+            return self
+                .connect_to(key, options)
+                .await
+                .map_err(ConnectionError::Final);
+        }
+        let mut checkout = self.pool.checkout(key.clone());
+        match futures_util::poll!(Pin::new(&mut checkout)) {
+            Poll::Ready(Ok(pooled)) => return Ok(pooled),
+            Poll::Ready(Err(error)) if error.is_cancellation() => {
+                return self
+                    .connect_to(key, options)
+                    .await
+                    .map_err(ConnectionError::Final);
+            }
+            Poll::Ready(Err(CheckoutError::NoLongerWanted)) => {
+                return Err(ConnectionError::Retry);
+            }
+            Poll::Ready(Err(error)) => {
+                return Err(ConnectionError::Final(Error::with_source(
+                    ErrorKind::Connect,
+                    error,
+                )));
+            }
+            Poll::Pending => {}
+        }
+        let connect = Box::pin(self.connect_to(key, options));
+        match future::select(checkout, connect).await {
+            Either::Left((Ok(pooled), _)) => Ok(pooled),
+            Either::Right((Ok(pooled), _)) => Ok(pooled),
+            Either::Left((Err(error), connect)) if error.is_cancellation() => {
+                connect.await.map_err(ConnectionError::Final)
+            }
+            Either::Left((Err(CheckoutError::NoLongerWanted), _)) => {
+                Err(ConnectionError::Retry)
+            }
+            Either::Right((Err(error), checkout)) if error.kind() == ErrorKind::Canceled => {
+                match checkout.wait_for_capacity().await {
+                    Ok(pooled) => Ok(pooled),
+                    Err(CheckoutError::ClosedValue | CheckoutError::NoLongerWanted) => {
+                        Err(ConnectionError::Retry)
+                    }
+                    Err(error) => Err(ConnectionError::Final(Error::with_source(
+                        ErrorKind::Connect,
+                        error,
+                    ))),
+                }
+            }
+            Either::Left((Err(error), _)) => Err(ConnectionError::Final(Error::with_source(
+                ErrorKind::Connect,
+                error,
+            ))),
+            Either::Right((Err(error), _)) => Err(ConnectionError::Final(error)),
+        }
+    }
+
+    async fn connect_to(
+        &self,
+        key: PoolKey,
+        options: RequestOptions,
+    ) -> Result<pool::Pooled<PoolClient<B>, PoolKey>, Error> {
+        let origin = normalize::pool_key_origin(&key);
+        let mut connecting = self
+            .pool
+            .connecting(&key, self.config.protocol)
+            .ok_or_else(|| Error::new(ErrorKind::Canceled))?;
+        let connect_started = Instant::now();
+        let connected = match self
+            .connector
+            .connect_with_options(
+                normalize::pool_key_uri(key.clone()),
+                self.config.protocol,
+                options,
+            )
+            .await
+        {
+            Ok(connected) => connected,
+            Err(error) => {
+                let kind = error.client_error_kind();
+                return Err(Error::with_source(kind, error));
+            }
+        };
+        let connection_info = ConnectionInfo {
+            connect_duration: Some(connect_started.elapsed()),
+            ..connected.info
+        };
+
+        if let Some(events) = &self.debug_events {
+            let protocol = connected.protocol;
+            events.record(DebugEvent::ConnectionEstablished {
+                origin: origin.clone(),
+                protocol,
+            });
+            if key.scheme() == &http::uri::Scheme::HTTPS {
+                events.record(DebugEvent::AlpnSelected {
+                    origin: origin.clone(),
+                    protocol,
+                });
+            }
+        }
+
+        if connected.protocol == ConnectionProtocol::Http2
+            && self.config.protocol != PoolProtocol::Http2
+        {
+            if self.config.protocol == PoolProtocol::Http1 {
+                return Err(Error::new(ErrorKind::Alpn));
+            }
+            connecting = connecting
+                .alpn_h2(&self.pool)
+                .ok_or_else(|| Error::new(ErrorKind::Canceled))?;
+        }
+
+        let handshake_started = Instant::now();
+        let mut connection = self
+            .handshake(connected, connection_info, origin)
+            .await?;
+        connection.connection_info.handshake_duration = Some(handshake_started.elapsed());
+        Ok(self.pool.pooled(connecting, connection))
+    }
+
+    async fn handshake(
+        &self,
+        connected: Connected,
+        connection_info: ConnectionInfo,
+        origin: String,
+    ) -> Result<PoolClient<B>, Error> {
+        match connected.protocol {
+            ConnectionProtocol::Http1 => {
+                #[cfg(feature = "http1")]
+                {
+                    let (mut sender, driver) = self
+                        .h1_builder
+                        .handshake(connected.io)
+                        .await
+                        .map_err(|error| Error::with_source(ErrorKind::Handshake, error))?;
+                    report_driver_result(
+                        self.executor.clone(),
+                        self.debug_events.clone(),
+                        origin,
+                        driver,
+                    );
+                    sender
+                        .ready()
+                        .await
+                        .map_err(|error| Error::with_source(ErrorKind::Handshake, error))?;
+                    Ok(PoolClient {
+                        sender: Sender::Http1(sender),
+                        connection_info,
+                    })
+                }
+                #[cfg(not(feature = "http1"))]
+                {
+                    let _ = (connected, origin);
+                    Err(Error::new(ErrorKind::ProtocolUnavailable))
+                }
+            }
+            ConnectionProtocol::Http2 => {
+                #[cfg(feature = "http2")]
+                {
+                    let (mut sender, driver) = self
+                        .h2_builder
+                        .handshake(connected.io)
+                        .await
+                        .map_err(|error| Error::with_source(ErrorKind::Handshake, error))?;
+                    report_driver_result(
+                        self.executor.clone(),
+                        self.debug_events.clone(),
+                        origin,
+                        driver,
+                    );
+                    sender
+                        .ready()
+                        .await
+                        .map_err(|error| Error::with_source(ErrorKind::Handshake, error))?;
+                    Ok(PoolClient {
+                        sender: Sender::Http2(sender),
+                        connection_info,
+                    })
+                }
+                #[cfg(not(feature = "http2"))]
+                {
+                    let _ = (connected, origin);
+                    Err(Error::new(ErrorKind::ProtocolUnavailable))
+                }
+            }
+        }
+    }
+}
+
+impl<B> Clone for Client<B> {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config,
+            connector: self.connector.clone(),
+            executor: self.executor.clone(),
+            #[cfg(feature = "http1")]
+            h1_builder: self.h1_builder.clone(),
+            #[cfg(feature = "http2")]
+            h2_builder: self.h2_builder.clone(),
+            debug_events: self.debug_events.clone(),
+            pool: self.pool.clone(),
+        }
+    }
+}
+
+impl<B> fmt::Debug for Client<B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Client")
+    }
+}
+
+enum TrySendError<B> {
+    Retryable {
+        request: Box<Request<B>>,
+        error: Error,
+        reused: bool,
+        absolute_uri: Option<http::Uri>,
+    },
+    Final(Error),
+}
+
+enum ConnectionError {
+    Final(Error),
+    Retry,
+}
+
+struct PoolClient<B> {
+    sender: Sender<B>,
+    connection_info: ConnectionInfo,
+}
+
+enum Sender<B> {
+    #[cfg(feature = "http1")]
+    Http1(hyper::client::conn::http1::SendRequest<B>),
+    #[cfg(feature = "http2")]
+    Http2(hyper::client::conn::http2::SendRequest<B>),
+}
+
+impl<B> PoolClient<B> {
+    fn is_http2(&self) -> bool {
+        match self.sender {
+            #[cfg(feature = "http1")]
+            Sender::Http1(_) => false,
+            #[cfg(feature = "http2")]
+            Sender::Http2(_) => true,
+        }
+    }
+
+    fn is_http1(&self) -> bool {
+        !self.is_http2()
+    }
+
+    fn is_ready(&self) -> bool {
+        match &self.sender {
+            #[cfg(feature = "http1")]
+            Sender::Http1(sender) => sender.is_ready(),
+            #[cfg(feature = "http2")]
+            Sender::Http2(sender) => sender.is_ready(),
+        }
+    }
+
+    fn poll_ready(
+        &mut self,
+        #[allow(unused_variables)] cx: &mut Context<'_>,
+    ) -> Poll<Result<(), hyper::Error>> {
+        match &mut self.sender {
+            #[cfg(feature = "http1")]
+            Sender::Http1(sender) => sender.poll_ready(cx),
+            #[cfg(feature = "http2")]
+            Sender::Http2(_) => Poll::Ready(Ok(())),
+        }
+    }
+}
+
+impl<B> PoolClient<B>
+where
+    B: Body + Send + 'static,
+{
+    async fn try_send_request(
+        &mut self,
+        request: Request<B>,
+    ) -> Result<Response<Incoming>, Box<hyper::client::conn::TrySendError<Request<B>>>> {
+        match &mut self.sender {
+            #[cfg(feature = "http1")]
+            Sender::Http1(sender) => sender.try_send_request(request).await.map_err(Box::new),
+            #[cfg(feature = "http2")]
+            Sender::Http2(sender) => sender.try_send_request(request).await.map_err(Box::new),
+        }
+    }
+}
+
+impl<B> Poolable for PoolClient<B>
+where
+    B: Send + 'static,
+{
+    fn is_open(&self) -> bool {
+        self.is_ready()
+    }
+
+    fn reserve(self) -> Reservation<Self> {
+        match self.sender {
+            #[cfg(feature = "http1")]
+            Sender::Http1(sender) => Reservation::Unique(Self {
+                sender: Sender::Http1(sender),
+                connection_info: self.connection_info,
+            }),
+            #[cfg(feature = "http2")]
+            Sender::Http2(sender) => Reservation::Shared(
+                Self {
+                    sender: Sender::Http2(sender.clone()),
+                    connection_info: self.connection_info,
+                },
+                Self {
+                    sender: Sender::Http2(sender),
+                    connection_info: self.connection_info,
+                },
+            ),
+        }
+    }
+
+    fn can_share(&self) -> bool {
+        self.is_http2()
+    }
+}
+
+/// Configures a client without exposing Hyper's protocol builders as a second
+/// public configuration surface.
+pub struct Builder {
+    config: ClientConfig,
+    connector: Connector,
+    executor: BoxExecutor,
+    #[cfg(feature = "http1")]
+    h1_builder: hyper::client::conn::http1::Builder,
+    #[cfg(feature = "http2")]
+    h2_builder: hyper::client::conn::http2::Builder<BoxExecutor>,
+    pool_config: pool::Config,
+    pool_timer: Option<Arc<dyn hyper::rt::Timer + Send + Sync>>,
+    debug_events: Option<DebugEventLog>,
+}
+
+impl Builder {
+    pub fn new<E>(executor: E) -> Self
+    where
+        E: hyper::rt::Executor<BoxSendFuture> + Send + Sync + 'static,
+    {
+        let executor = BoxExecutor::new(executor);
+        #[cfg(feature = "http1")]
+        let h1_builder = {
+            let mut builder = hyper::client::conn::http1::Builder::new();
+            // Keep direct-origin wire output readable and stable for the
+            // `Host` normalization contract exercised by raw-wire tests.
+            builder.title_case_headers(true);
+            builder
+        };
+        Self {
+            config: ClientConfig {
+                retry_canceled_requests: true,
+                max_stale_retries: 2,
+                request_options: RequestOptions::new(),
+                set_host: true,
+                protocol: default_protocol(),
+            },
+            connector: Connector::new(),
+            #[cfg(feature = "http1")]
+            h1_builder,
+            #[cfg(feature = "http2")]
+            h2_builder: {
+                let mut builder = hyper::client::conn::http2::Builder::new(executor.clone());
+                // Hyper requires a timer before HTTP/2 keepalive can be
+                // enabled. `AsyncIoTimer` keeps that support runtime-neutral
+                // and matches the timer already used for idle-pool eviction.
+                builder.timer(AsyncIoTimer);
+                builder
+            },
+            executor,
+            pool_config: pool::Config {
+                idle_timeout: Some(Duration::from_secs(90)),
+                max_idle_per_host: usize::MAX,
+                max_h1_connections_per_host: usize::MAX,
+            },
+            pool_timer: Some(Arc::new(AsyncIoTimer)),
+            debug_events: None,
+        }
+    }
+
+    pub fn connector(&mut self, connector: Connector) -> &mut Self {
+        self.connector = connector;
+        self
+    }
+
+    /// Sets how long an idle pooled connection is retained.
+    ///
+    /// `None` retains connections until the peer closes them. A zero duration
+    /// is rejected because it would evict every connection immediately.
+    pub fn pool_idle_timeout(
+        &mut self,
+        timeout: impl Into<Option<Duration>>,
+    ) -> io::Result<&mut Self> {
+        let timeout = timeout.into();
+        if let Some(timeout) = timeout {
+            require_positive_timeout(timeout)?;
+        }
+        self.pool_config.idle_timeout = timeout;
+        Ok(self)
+    }
+
+    /// Caps idle HTTP/1.1 connections retained for each origin.
+    ///
+    /// `None` leaves the number unlimited. Use [`Self::disable_pool`] instead
+    /// when connections should not be reused.
+    pub fn pool_max_idle_per_host(
+        &mut self,
+        max_idle: impl Into<Option<NonZeroUsize>>,
+    ) -> &mut Self {
+        let max_idle = max_idle.into();
+        self.pool_config.max_idle_per_host = max_idle.map_or(usize::MAX, NonZeroUsize::get);
+        self
+    }
+
+    /// Disables connection reuse and the pool's HTTP/1.1 connection bound.
+    pub fn disable_pool(&mut self) -> &mut Self {
+        self.pool_config.max_idle_per_host = 0;
+        self
+    }
+
+    /// Limits open HTTP/1.1 connections for each origin.
+    ///
+    /// The bound includes connecting, in-use, and idle HTTP/1.1 sockets, so
+    /// callers above the bound wait for a reusable connection instead of
+    /// creating another socket. HTTP/2 remains multiplexed and is unaffected.
+    /// `None` leaves the number unlimited; the default is unlimited. The
+    /// bound applies only while the idle pool is enabled.
+    pub fn pool_max_connections_per_host(
+        &mut self,
+        max_connections: impl Into<Option<NonZeroUsize>>,
+    ) -> &mut Self {
+        let max_connections = max_connections.into();
+        self.pool_config.max_h1_connections_per_host =
+            max_connections.map_or(usize::MAX, NonZeroUsize::get);
+        self
+    }
+
+    /// Replaces the timer used only for idle-pool eviction. Request deadlines
+    /// remain caller-controlled future races; this builder intentionally does
+    /// not define a misleading whole-request timeout.
+    pub fn pool_timer<T>(&mut self, timer: T) -> &mut Self
+    where
+        T: hyper::rt::Timer + Send + Sync + 'static,
+    {
+        self.pool_timer = Some(Arc::new(timer));
+        self
+    }
+
+    /// Records endpoint lifecycle transitions in `log` without adding a
+    /// logging-framework dependency. The caller retains a clone and drains
+    /// it when inspection is useful.
+    pub fn debug_event_log(&mut self, log: DebugEventLog) -> &mut Self {
+        self.debug_events = Some(log);
+        self
+    }
+
+    pub fn set_host(&mut self, enabled: bool) -> &mut Self {
+        self.config.set_host = enabled;
+        self
+    }
+
+    /// Applies a conservative preset for an Internet-facing client.
+    ///
+    /// Sets 32 open and 16 idle HTTP/1.1 connections per origin, two stale
+    /// retries, and 10 s DNS/TCP/TLS and 30 s response-header deadlines. The
+    /// 90 s pool idle timeout is unchanged. Later calls override individual
+    /// values, and [`Self::request_with_options`] still controls one request
+    /// explicitly.
+    pub fn production(&mut self) -> &mut Self {
+        self.pool_max_connections_per_host(Some(
+            NonZeroUsize::new(32).expect("production connection limit is nonzero"),
+        ));
+        self.pool_max_idle_per_host(Some(
+            NonZeroUsize::new(16).expect("production idle limit is nonzero"),
+        ));
+        self.max_stale_retries(2);
+        self.config.request_options = RequestOptions {
+            dns_timeout: Some(Duration::from_secs(10)),
+            connect_timeout: Some(Duration::from_secs(10)),
+            tls_timeout: Some(Duration::from_secs(10)),
+            headers_timeout: Some(Duration::from_secs(30)),
+        };
+        self
+    }
+
+    /// Sets deadlines used by [`Client::request`] unless overridden per call.
+    ///
+    /// [`Client::request_with_options`] never merges these values.
+    pub fn default_request_options(&mut self, options: RequestOptions) -> &mut Self {
+        self.config.request_options = options;
+        self
+    }
+
+    pub fn retry_canceled_requests(&mut self, enabled: bool) -> &mut Self {
+        self.config.retry_canceled_requests = enabled;
+        self
+    }
+
+    /// Bounds retries after a reused pooled connection fails before sending.
+    ///
+    /// Only safe or idempotent methods with an exactly empty body are retried;
+    /// a non-empty or streaming body is never replayed. The default is two
+    /// retries; zero disables them. [`Self::retry_canceled_requests`] remains
+    /// the master switch.
+    pub fn max_stale_retries(&mut self, retries: usize) -> &mut Self {
+        self.config.max_stale_retries = retries;
+        self
+    }
+
+    /// Selects the transport protocol and matching TLS ALPN policy.
+    ///
+    /// Replacing the policy is always valid: a later selection removes any
+    /// ALPN restriction applied by an earlier one. A custom [`Dialer`] owns
+    /// transport negotiation and may ignore the TLS ALPN portion.
+    pub fn protocol(&mut self, protocol: Protocol) -> &mut Self {
+        self.config.protocol = protocol.pool_protocol();
+        self
+    }
+
+    /// Applies stable HTTP/2 client settings without exposing Hyper's builder
+    /// as part of h12tiny's public API.
+    ///
+    /// Invalid or inert settings are rejected before they reach a connection.
+    #[cfg(feature = "http2")]
+    pub fn http2_settings(
+        &mut self,
+        settings: Http2Settings,
+    ) -> Result<&mut Self, Http2SettingsError> {
+        settings.validate()?;
+        settings.apply(&mut self.h2_builder);
+        Ok(self)
+    }
+
+    pub fn build<B>(self) -> Client<B> {
+        let debug_events = self.debug_events;
+        Client {
+            config: self.config,
+            connector: self.connector,
+            executor: self.executor.clone(),
+            #[cfg(feature = "http1")]
+            h1_builder: self.h1_builder,
+            #[cfg(feature = "http2")]
+            h2_builder: self.h2_builder,
+            debug_events: debug_events.clone(),
+            pool: pool::Pool::new(
+                self.pool_config,
+                self.executor,
+                self.pool_timer,
+                debug_events,
+            ),
+        }
+    }
+}
+
+fn default_protocol() -> PoolProtocol {
+    // H2-only clients use prior-knowledge H2 for plaintext origins too.
+    #[cfg(all(feature = "http2", not(feature = "http1")))]
+    {
+        PoolProtocol::Http2
+    }
+    #[cfg(not(all(feature = "http2", not(feature = "http1"))))]
+    {
+        PoolProtocol::Auto
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NoopExecutor;
+
+    impl hyper::rt::Executor<BoxSendFuture> for NoopExecutor {
+        fn execute(&self, _: BoxSendFuture) {}
+    }
+
+    struct InlineExecutor;
+
+    impl hyper::rt::Executor<BoxSendFuture> for InlineExecutor {
+        fn execute(&self, future: BoxSendFuture) {
+            futures_lite::future::block_on(future);
+        }
+    }
+
+    #[test]
+    fn driver_errors_are_reported() {
+        let events = DebugEventLog::default();
+        report_driver_result(
+            BoxExecutor::new(InlineExecutor),
+            Some(events.clone()),
+            "http://example.test".to_owned(),
+            async { Err::<(), _>(()) },
+        );
+        assert!(matches!(
+            events.drain().as_slice(),
+            [DebugEvent::DriverFailed { origin }] if origin == "http://example.test"
+        ));
+    }
+
+    #[test]
+    fn pool_limits_distinguish_unlimited_from_zero() {
+        let mut builder = Builder::new(NoopExecutor);
+        builder.pool_max_idle_per_host(None);
+        assert_eq!(builder.pool_config.max_idle_per_host, usize::MAX);
+        builder.pool_max_idle_per_host(NonZeroUsize::new(2).unwrap());
+        assert_eq!(builder.pool_config.max_idle_per_host, 2);
+        builder.disable_pool();
+        assert_eq!(builder.pool_config.max_idle_per_host, 0);
+
+        builder.pool_max_connections_per_host(None);
+        assert_eq!(builder.pool_config.max_h1_connections_per_host, usize::MAX);
+        builder.pool_max_connections_per_host(NonZeroUsize::new(1).unwrap());
+        assert_eq!(builder.pool_config.max_h1_connections_per_host, 1);
+    }
+
+    #[test]
+    fn zero_pool_idle_timeout_is_rejected() {
+        let mut builder = Builder::new(NoopExecutor);
+        let error = match builder.pool_idle_timeout(Some(Duration::ZERO)) {
+            Ok(_) => panic!("zero pool idle timeout was accepted"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn production_sets_bounded_client_defaults() {
+        let mut builder = Builder::new(NoopExecutor);
+        builder.production();
+        assert_eq!(builder.pool_config.max_h1_connections_per_host, 32);
+        assert_eq!(builder.pool_config.max_idle_per_host, 16);
+        assert_eq!(builder.config.max_stale_retries, 2);
+        assert_eq!(
+            builder.config.request_options.dns_timeout(),
+            Some(Duration::from_secs(10))
+        );
+        assert_eq!(
+            builder.config.request_options.connect_timeout(),
+            Some(Duration::from_secs(10))
+        );
+        assert_eq!(
+            builder.config.request_options.tls_timeout(),
+            Some(Duration::from_secs(10))
+        );
+        assert_eq!(
+            builder.config.request_options.headers_timeout(),
+            Some(Duration::from_secs(30))
+        );
+        assert_eq!(builder.pool_config.idle_timeout, Some(Duration::from_secs(90)));
+    }
+
+    #[test]
+    fn protocol_selection_replaces_the_previous_policy() {
+        let mut builder = Builder::new(NoopExecutor);
+        builder.protocol(Protocol::Auto);
+        assert_eq!(builder.config.protocol, default_protocol());
+        #[cfg(feature = "http1")]
+        {
+            builder.protocol(Protocol::Http1Only);
+            assert_eq!(builder.config.protocol, PoolProtocol::Http1);
+        }
+        #[cfg(feature = "http2")]
+        {
+            builder.protocol(Protocol::Http2Only);
+            assert_eq!(builder.config.protocol, PoolProtocol::Http2);
+        }
+    }
+
+    #[cfg(feature = "http2")]
+    fn settings_error(
+        builder: &mut Builder,
+        settings: Http2Settings,
+    ) -> Http2SettingsError {
+        match builder.http2_settings(settings) {
+            Ok(_) => panic!("invalid HTTP/2 settings were accepted"),
+            Err(error) => error,
+        }
+    }
+
+    #[test]
+    fn stale_retry_requires_an_empty_idempotent_body_and_a_reused_connection() {
+        let budget = RetryBudget { max_retries: 2 };
+        for method in [Method::GET, Method::HEAD, Method::OPTIONS, Method::TRACE, Method::PUT, Method::DELETE] {
+            assert!(budget.permits(0, &method, true, true), "{method} should retry");
+        }
+        for method in [Method::POST, Method::PATCH, Method::CONNECT] {
+            assert!(!budget.permits(0, &method, true, true), "{method} must not retry");
+        }
+        assert!(!budget.permits(0, &Method::GET, false, true), "a body must not replay");
+        assert!(!budget.permits(0, &Method::GET, true, false), "a new connection is not a stale retry");
+    }
+
+    #[test]
+    fn stale_retry_stops_at_the_budget() {
+        let budget = RetryBudget { max_retries: 2 };
+        assert!(budget.permits(0, &Method::GET, true, true));
+        assert!(budget.permits(1, &Method::GET, true, true));
+        assert!(!budget.permits(2, &Method::GET, true, true));
+        assert!(!RetryBudget { max_retries: 0 }.permits(0, &Method::GET, true, true));
+    }
+
+    #[cfg(feature = "http2")]
+    #[test]
+    fn http2_settings_reject_invalid_and_inert_values() {
+        let mut builder = Builder::new(NoopExecutor);
+
+        assert_eq!(
+            settings_error(&mut builder, Http2Settings::new().max_frame_size(16_383)),
+            Http2SettingsError::MaxFrameSizeOutOfRange
+        );
+        assert_eq!(
+            settings_error(&mut builder, Http2Settings::new().max_frame_size(16_777_216)),
+            Http2SettingsError::MaxFrameSizeOutOfRange
+        );
+        assert_eq!(
+            settings_error(
+                &mut builder,
+                Http2Settings::new().initial_stream_window_size(1 << 31)
+            ),
+            Http2SettingsError::StreamWindowTooLarge
+        );
+        assert_eq!(
+            settings_error(
+                &mut builder,
+                Http2Settings::new().initial_connection_window_size(1 << 31)
+            ),
+            Http2SettingsError::ConnectionWindowTooLarge
+        );
+        assert_eq!(
+            settings_error(
+                &mut builder,
+                Http2Settings::new().keep_alive_interval(Duration::ZERO)
+            ),
+            Http2SettingsError::ZeroKeepAliveDuration
+        );
+        assert_eq!(
+            settings_error(
+                &mut builder,
+                Http2Settings::new()
+                    .keep_alive_interval(Duration::from_secs(1))
+                    .keep_alive_timeout(Duration::ZERO)
+            ),
+            Http2SettingsError::ZeroKeepAliveDuration
+        );
+        assert_eq!(
+            settings_error(
+                &mut builder,
+                Http2Settings::new().keep_alive_timeout(Duration::from_secs(1))
+            ),
+            Http2SettingsError::KeepAliveWithoutInterval
+        );
+        assert_eq!(
+            settings_error(
+                &mut builder,
+                Http2Settings::new().keep_alive_while_idle(true)
+            ),
+            Http2SettingsError::KeepAliveWithoutInterval
+        );
+
+        builder
+            .http2_settings(
+                Http2Settings::new()
+                    .max_frame_size(16_384)
+                    .initial_stream_window_size((1 << 31) - 1)
+                    .keep_alive_interval(Duration::from_secs(1))
+                    .keep_alive_timeout(Duration::from_secs(1))
+                    .keep_alive_while_idle(true),
+            )
+            .unwrap();
+    }
+}

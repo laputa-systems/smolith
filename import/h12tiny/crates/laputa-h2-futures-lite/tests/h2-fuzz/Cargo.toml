@@ -1,0 +1,16 @@
+[package]
+name = "h2-fuzz"
+version = "0.0.0"
+publish = false
+license = "MIT"
+edition = "2018"
+
+[dependencies]
+h2 = { package = "laputa-h2-futures-lite", path = "../.." }
+
+env_logger = { version = "0.9", default-features = false }
+futures = { version = "0.3", default-features = false, features = ["std"] }
+futures-io = "0.3"
+honggfuzz = "0.5"
+smol = { package = "laputa-smol", version = "0.3.0" }
+http = "1"
