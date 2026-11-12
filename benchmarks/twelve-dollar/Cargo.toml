@@ -13,13 +13,13 @@ publish = false
 base64 = "0.23"
 futures-channel = "0.3.34"
 h12tiny = { path = "../../crates/h12tiny", default-features = false }
-hmac = "0.12.1"
-rusqlite = { version = "0.41.1", features = ["bundled"] }
+hmac = "0.13.0"
+rusqlite = { version = "0.42.0", features = ["bundled"] }
 deser = { version = "0.10.2", features = ["derive"] }
 deser-json = "0.10.2"
 deser-value = "0.10.2"
-sha2 = "0.10.9"
-signal-hook = "0.3.18"
+sha2 = "0.11.1"
+signal-hook = "0.4.6"
 smol = { package = "laputa-smol", path = "../../crates/smol" }
 
 [profile.dev]
