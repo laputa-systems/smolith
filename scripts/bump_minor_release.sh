@@ -146,6 +146,15 @@ is_transient_publish_failure() {
     printf '%s' "$1" | grep -qi -e 'no matching package' -e 'failed to select a version' -e 'unknown crate' -e 'spurious network' -e 'connection reset' -e 'timed out' -e 'status 5[0-9][0-9]' -e 'failed to get'
 }
 
+# crates.io stays the public upload registry. The committed source
+# replacement redirects an unnamed registry at dependency downloads and
+# rejects search, owner, and publish until this name is passed.
+PUBLIC_REGISTRY=crates-io
+
+cargo_public() {
+    cargo "$@" --registry "$PUBLIC_REGISTRY"
+}
+
 registry_latest() {
     # Prints the latest registry version of $1, or nothing when the crate
     # has never been published. A failed query still fails loudly, but a
@@ -155,7 +164,7 @@ registry_latest() {
     # release output; it is reported when the query itself fails.
     attempt=1
     while true; do
-        if search_result=$(cargo search "$1" --limit 1 2>&1); then
+        if search_result=$(cargo_public search "$1" --limit 1 2>&1); then
             break
         fi
         if is_rate_limited "$search_result"; then
@@ -267,7 +276,7 @@ dry_run_package() {
     # so a dependency published seconds ago has time to appear.
     attempt=1
     while true; do
-        if dry_output=$(cargo publish -p "$1" --dry-run --allow-dirty 2>&1); then
+        if dry_output=$(cargo_public publish -p "$1" --dry-run --allow-dirty 2>&1); then
             printf '%s\n' "$dry_output"
             return 0
         fi
@@ -305,7 +314,7 @@ publish_package() {
     attempt=1
     transient_attempt=1
     while true; do
-        if publish_output=$(cargo publish -p "$1" 2>&1); then
+        if publish_output=$(cargo_public publish -p "$1" 2>&1); then
             printf '%s\n' "$publish_output"
             return 0
         fi
@@ -479,7 +488,7 @@ MAX_PUBLISHED=
 for name in $PKG_SPACE; do
     latest=$(registry_latest "$name")
     if [ -n "$latest" ]; then
-        owner_output=$(cargo owner --list "$name" 2>&1) || fail "could not verify ownership of $name: $owner_output"
+        owner_output=$(cargo_public owner --list "$name" 2>&1) || fail "could not verify ownership of $name: $owner_output"
         if [ -z "$MAX_PUBLISHED" ]; then
             MAX_PUBLISHED=$latest
         elif version_at_least "$latest" "$MAX_PUBLISHED"; then

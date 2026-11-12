@@ -19,15 +19,6 @@ Next: 13
 - **Fix with:** `lifecycle-concurrency`
 - **Effort:** M
 
-### SMOL-7 · P1 · Release registry preflight rejects the committed source replacement
-
-- **Area:** Build
-- **Where:** `.cargo/config.toml:1`, `Makefile:9`, `scripts/bump_minor_release.sh:158`, `scripts/bump_minor_release.sh:270`, `scripts/bump_minor_release.sh:308`, `scripts/bump_minor_release.sh:479`
-- **Problem:** The Cargo configuration replaces crates.io with the `stuff` sparse source, but the public release phase queries its registry implicitly. From this checkout, `CARGO_NET_OFFLINE=true cargo search laputa-smol --limit 1` exits 101 because source replacement requires an explicit registry. The unchanged release script reproduces that failure before any version edit or publication. The subsequent ownership and publish commands also leave their registry implicit. `make publish` therefore cannot reach either its public phase or the separate private phase.
-- **Recommendation:** Give the public phase one explicit crates.io registry selection and apply it consistently to search, ownership checks, dry runs, and uploads. Keep dependency source replacement separate from upload destination, and preserve `stuff publish cargo ... --registry mycrates` as the private phase. Test release preflight with the committed Cargo configuration in a disposable checkout without publishing.
-- **Fix with:** `single-source-of-truth`
-- **Effort:** S
-
 ### SMOL-8 · P1 · Release preflight dirties its own checkout and rejects it
 
 - **Area:** Build
