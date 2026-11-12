@@ -1884,6 +1884,77 @@ fn client_decrease_initial_window_size() {
 }
 
 #[test]
+fn client_decrease_initial_window_size_sends_released_capacity() {
+    h2_support::run(async {
+    h2_support::trace_init!();
+    let (io, mut srv) = mock::new();
+
+    let srv = async move {
+        let settings = srv.assert_client_handshake().await;
+        assert_default_settings!(settings);
+
+        srv.recv_frame(
+            frames::headers(1)
+                .request("GET", "https://http2.akamai.com/")
+                .eos(),
+        )
+        .await;
+        srv.send_frame(frames::headers(1).response(200)).await;
+        srv.send_frame(frames::data(1, vec![b'a'; 16_384])).await;
+
+        srv.recv_frame(frames::settings().initial_window_size(1024))
+            .await;
+        srv.send_frame(frames::settings_ack()).await;
+
+        timer::timeout(
+            Duration::from_secs(5),
+            srv.recv_frame(frames::window_update(1, 16_384)),
+        )
+        .await
+        .expect("released stream capacity must be advertised after SETTINGS ACK");
+
+        srv.send_frame(frames::data(1, vec![b'a'; 1024]).eos())
+            .await;
+    };
+
+    let client = async move {
+        let (mut client, mut conn) = client::handshake(io).await.unwrap();
+
+        let resp = conn
+            .drive(client.get("https://http2.akamai.com/"))
+            .await
+            .expect("response");
+        let mut body = resp.into_body();
+
+        let buf = conn
+            .drive(body.data())
+            .await
+            .expect("data1")
+            .expect("data1");
+        assert_eq!(buf.len(), 16_384);
+        body.flow_control()
+            .release_capacity(16_384)
+            .expect("release_capacity");
+        conn.drive(yield_once()).await;
+
+        conn.set_initial_window_size(1024).expect("update");
+        conn.drive(yield_once()).await;
+
+        let buf = conn
+            .drive(body.data())
+            .await
+            .expect("data2")
+            .expect("data2");
+        assert_eq!(buf.len(), 1024);
+        assert!(body.is_end_stream());
+
+        conn.await.expect("client");
+    };
+
+    join(srv, client).await;
+    });
+}
+#[test]
 fn server_target_window_size() {
     h2_support::run(async {
     h2_support::trace_init!();

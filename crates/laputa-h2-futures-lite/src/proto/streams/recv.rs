@@ -607,11 +607,17 @@ impl Recv {
                     let dec = old_sz - target;
                     tracing::trace!("decrementing all windows; dec={}", dec);
 
+                    let pending_window_updates = &mut self.pending_window_updates;
                     store.try_for_each(|mut stream| {
                         stream
                             .recv_flow
                             .dec_recv_window(dec)
                             .map_err(proto::Error::library_go_away)?;
+
+                        if stream.recv_flow.unclaimed_capacity().is_some() {
+                            pending_window_updates.push(&mut stream);
+                        }
+
                         Ok::<_, proto::Error>(())
                     })?;
                 }
