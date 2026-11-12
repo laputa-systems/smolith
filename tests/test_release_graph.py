@@ -125,8 +125,12 @@ leaf = { workspace = true }
         self.assertIn(("h12tiny-core", "laputa-h2-futures-lite"), edges)
         self.assertIn(("laputa-h2-futures-lite", "laputa-leaf"), edges)
         self.assertIn(("laputa-h2-futures-lite", "laputa-smol"), edges)
-        self.assertNotIn(("h12tiny-core", "laputa-smol"), edges)
+        self.assertIn(("h12tiny-core", "laputa-smol"), edges)
         self.assertNotIn(("h12tiny", "bytes"), edges)
+        from inventory import load
+
+        order = load(self.root).order
+        self.assertLess(order.index("laputa-smol"), order.index("h12tiny-core"))
 
     def test_http_versions_must_agree(self):
         self.write("Cargo.toml", '''[workspace]

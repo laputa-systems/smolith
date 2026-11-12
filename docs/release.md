@@ -18,9 +18,9 @@ Protocol forks are part of this release. They are not bumped with the runtime or
 
 ## Local package verification
 
-`tools/stage.sh` publishes the owned crates in dependency order to a localhost sparse registry, using Cargo's package-build verification. For that process, crates.io is replaced by the staging index. The server proxies external dependencies and refuses to obtain an owned crate, including `h12tiny` names, from the public registry.
+`tools/stage.sh` publishes the owned crates in dependency order to a localhost sparse registry, using Cargo's package-build verification. For that process, crates.io is replaced by the staging index. The server proxies external dependencies and refuses to obtain an owned crate, including `h12tiny` names, from the public registry. Cargo resolves workspace dev-dependencies against that index before upload, so those owned crates are published first. The index record itself omits dev-dependencies.
 
-The verifier checks licenses, dependency identities, the absence of patches and Tokio normal/build edges, and preservation of default features explicitly disabled in member manifests. The staging index omits dev-dependencies. Fresh consumers then build `laputa-smol` and small HTTP, TLS, blocking, web, and component crates from the index without path dependencies.
+The verifier checks licenses, dependency identities, the absence of patches and Tokio normal/build edges, and preservation of default features explicitly disabled in member manifests. Fresh consumers then build `laputa-smol` and small HTTP, TLS, blocking, web, and component crates from the index without path dependencies. A direct staging dependency names the local index. A transitive owned crate keeps a crates.io source id, and its checkout directory is the local registry.
 
 ## Other checks
 

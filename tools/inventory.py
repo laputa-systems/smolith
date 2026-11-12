@@ -83,13 +83,24 @@ def _edges(documents, manifests, aliases, owned):
     edges = set()
     for name, document in documents.items():
         for scope in _dependency_scopes(document):
-            for kind in ("dependencies", "build-dependencies"):
+            for kind in ("dependencies", "build-dependencies", "dev-dependencies"):
                 for alias, spec in scope.get(kind, {}).items():
+                    inherited = isinstance(spec, dict) and spec.get("workspace") is True
+                    if kind == "dev-dependencies":
+                        if not inherited:
+                            continue
+                        if alias not in aliases:
+                            raise ValueError(
+                                f"dependency {alias} sets workspace = true without a workspace.dependencies entry"
+                            )
+                        resolved = aliases[alias]
+                        if resolved in owned and resolved != name:
+                            edges.add((name, resolved))
+                        continue
                     if isinstance(spec, dict) and str(spec.get("package", "")).startswith("laputa-"):
                         raise ValueError(f"direct owned dependency in {manifests[name]}: {alias}")
                     resolved = aliases.get(alias)
                     declared = spec.get("package", alias) if isinstance(spec, dict) else alias
-                    inherited = isinstance(spec, dict) and spec.get("workspace") is True
                     if inherited and alias not in aliases:
                         raise ValueError(
                             f"dependency {alias} sets workspace = true without a workspace.dependencies entry"

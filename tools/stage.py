@@ -426,21 +426,23 @@ def compile_consumer(index, name, cargo_toml, source):
     (consumer / "src" / "lib.rs").write_text(source, encoding="utf-8")
     manifest = consumer / "Cargo.toml"
     subprocess.check_call(
-        ["cargo", "check", "--manifest-path", str(manifest), "--offline", *cargo_config(index)],
+        ["cargo", "check", "--manifest-path", str(manifest), *cargo_config(index)],
         cwd="/",
     )
     raw = subprocess.check_output(
-        ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(manifest), "--offline", *cargo_config(index)],
+        ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(manifest), *cargo_config(index)],
         cwd="/",
     )
     meta = json.loads(raw)
     for pkg in meta["packages"]:
-        if pkg["name"] in OWNED_NAMES:
-            source_id = pkg["source"] or ""
-            if "127.0.0.1" not in source_id or source_id.startswith("path+") or "crates.io" in source_id:
-                raise SystemExit(f"{name} resolved {pkg['name']} from {source_id}")
-        if "path" in (pkg.get("source") or "") and pkg["name"] in OWNED_NAMES:
-            raise SystemExit(f"{name} resolved {pkg['name']} from a path")
+        if "tokio" in pkg["name"]:
+            raise SystemExit(f"{name} resolved {pkg['name']}")
+        if pkg["name"] not in OWNED_NAMES:
+            continue
+        source_id = pkg.get("source") or ""
+        manifest = pkg.get("manifest_path") or ""
+        if source_id.startswith("path+") or "127.0.0.1" not in manifest:
+            raise SystemExit(f"{name} resolved {pkg['name']} from {source_id} at {manifest}")
     print(f"registry consumer {name} ok", flush=True)
 
 
@@ -460,7 +462,11 @@ publish = false
         (
             "consumer-http1",
             'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["client", "server", "http1"] }\n',
-            "pub fn touch() {\n    let _ = h12tiny::client::Client::<()>::builder;\n    let _ = h12tiny::server::serve::<(), ()>;\n}\n",
+            "pub fn touch() {\n"
+            "    let _builder: fn(h12tiny::runtime::BoxExecutor) -> h12tiny::client::Builder =\n"
+            "        h12tiny::client::Client::<()>::builder;\n"
+            "    let _ = std::any::type_name::<h12tiny::server::ConnectionError>();\n"
+            "}\n",
         ),
         (
             "consumer-http2",
@@ -469,7 +475,7 @@ publish = false
         ),
         (
             "consumer-tls",
-            'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["client", "tls"] }\n',
+            'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["client", "http1", "tls"] }\n',
             "pub fn touch() {\n    let _ = h12tiny::client::ClientTlsConfigBuilder::new;\n}\n",
         ),
         (
