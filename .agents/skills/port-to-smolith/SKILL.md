@@ -23,6 +23,7 @@ Read the current smolith sources and docs before choosing APIs or versions; inst
 - Check reqwest re-exports independently of HTTP calls. For example, `reqwest::Url` callers may still need the `url` crate for parsing and query encoding after reqwest is removed.
 - Do not assume a Tokio primitive has an equivalent with identical semantics. In particular, dropping a smol task cancels it unless detached; choose explicit ownership and shutdown behavior. Check notification permits and races, `select!` cancellation, task-set completion and errors, and blocking work independently.
 - Do not assume reqwest convenience behavior exists in h12tiny. Its client has separate connection and response-header deadlines, which do not cover pool waits or response-body streaming. Preserve an application's whole-request deadline explicitly when required. Check the selected release's redirect, proxy, decompression, URL, and JSON facilities before implementing or selecting replacements. Preserve retry limits and avoid replaying unsafe requests.
+- Inspect the resolved reqwest features and its actual proxy matcher. Disabling default features does not by itself disable proxy environment variables; test proxy and bypass behavior when the old client honors them.
 - h12tiny's default TLS client uses system trust. Compare that policy with the existing client and preserve required custom roots and verification. Do not weaken certificate or hostname verification to make a migration pass.
 
 ## Migrate and verify
