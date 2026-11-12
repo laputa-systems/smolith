@@ -17,15 +17,16 @@ workspace checks below are the broader integration gates.
 - `scripts/miri-io.sh` runs the focused unsafe I/O adapter tests under nightly
   Miri.
 - `sh scripts/check-msrv.sh` reads every workspace member from `cargo metadata`
-  and checks it with that member's declared `rust-version` and all features,
-  then keeps the workspace-excluded fork checks.
+  and checks it with that member's declared `rust-version` and all features.
+  Runtime crates stay on 1.85. HTTP crates keep the 1.88 and 1.89 minimums
+  declared on their manifests. The external runtime consumer stays on 1.85.
 - H2 unit tests: `cargo test --manifest-path crates/laputa-h2-futures-lite/Cargo.toml --lib`.
 - H2 flow control: `cargo test --manifest-path crates/laputa-h2-futures-lite/Cargo.toml --test flow_control_futures`.
 - Hyper: `cargo check --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full`.
 - fastwebsockets: run `cargo test --all-features` from `crates/laputa-fastwebsockets-futures-lite`.
 - Fork protocol gate: `sh scripts/verify-protocols.sh` runs every fork suite and
   the shared test support crate. Pass `--suite NAME` to run one suite and
-  `--check-ledger` to validate `docs/fork-test-parity.md`. CI runs the full gate
+  `--check-ledger` to validate `docs/h12tiny/fork-test-parity.md`. CI runs the full gate
   on Linux; the individual commands above are for iterating on one fork, not a
   substitute for the gate.
 

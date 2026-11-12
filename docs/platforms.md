@@ -14,12 +14,12 @@ Windows is unsupported. Its target reaches `compile_error!` in polling, async-io
 
 ## h12tiny
 
-[fixtures/h12tiny.toml](../fixtures/h12tiny.toml) pins the consumer revision. `fixtures/h12tiny.sh` retargets its runtime edges to this checkout and runs the HTTP, TLS, cancellation, reuse, timeout, and shutdown gates. `H12TINY_MIRROR` selects the clone source.
+HTTP, TLS, cancellation, reuse, timeout, shutdown, and WebSocket behavior is covered by the facade integration tests under `crates/h12tiny/tests`. `make test` runs that suite with its features enabled. `sh scripts/verify-protocols.sh` runs the protocol suites on the host that executes it. A target compile check does not establish that execution.
 
-The fixture's backpressure tests live in Tokio harnesses outside that workspace. `fixtures/h12tiny.py` records that gate as a gap rather than a pass.
+Inherited Tokio examples and benches for Hyper and H2 are kept under each fork's `historical/` directory and are not Cargo targets. fastwebsockets keeps its inherited `examples/`, `autobahn/`, and `benches/` sources off the automatic target list.
 
 ## Execution gaps
 
 - BSD beyond macOS: run `cargo test -p laputa-polling -p laputa-async-io` on the actual target.
-- Linux musl x86_64 execution and a current full musl aarch64 suite, including `laputa-smol`, remain unverified by the recorded runs.
-- Run `fixtures/h12tiny.sh` on a host with access to its pinned repository and dependency sources before claiming the HTTP/2 and TLS gates passed.
+- Linux musl x86_64 execution and a current full musl aarch64 suite, including `laputa-smol` and the HTTP crates, remain unverified by the recorded runs.
+- The protocol gate and the h12tiny integration tests need to be run on Linux before claiming those hosts passed after this move.

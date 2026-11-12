@@ -9,13 +9,13 @@ Next: 27
 - **Recommendation:** Give pending control responses one bounded owner that preserves acknowledgment and SETTINGS ordering while allowing the progress required by the bidirectional-deadlock regression. Do not restore the old unconditional stop-reading behavior or merely remove the assertions. Verify multiple control obligations under constrained output together with the existing progress regression.
 - **Fix with:** `lifecycle-concurrency`
 - **Effort:** M (days)
-- **Design:** [Bounded H2 control responses](docs/rfc/H12T-18-h2-control-responses.md).
+- **Design:** [Bounded H2 control responses](rfc/H12T-18-h2-control-responses.md).
 
 ### H12T-19 · P1 · The benchmark workspace no longer resolves the local facade
 
 - **Area:** Build
-- **Where:** `benchmarks/twelve-dollar/Cargo.toml:15`, `benchmarks/twelve-dollar/Cargo.lock:365`, `benchmarks/twelve-dollar/build.sh:6`, `Cargo.toml:3`, `scripts/bump_minor_release.sh:450`.
-- **Problem:** The benchmark workspace requires the local `h12tiny` path at `^0.8.0`, while the facade is `0.9.0`. Cargo enforces both the path and the version requirement. An isolated manifest copying that dependency declaration and pointing to the unchanged facade fails with `failed to select a version for the requirement h12tiny = "^0.8.0"`, reporting `0.9.0` as the nonmatching candidate. The full benchmark check was separately blocked by uncached `hmac` in offline mode; the isolated resolution check establishes the version defect without that unrelated dependency. The release script discovers only root workspace members, so excluded in-repository consumers do not move with a minor release.
+- **Where:** `benchmarks/twelve-dollar/Cargo.toml`, `benchmarks/twelve-dollar/Cargo.lock`.
+- **Problem:** The benchmark manifest and lock now resolve `h12tiny` 0.9.0 from `crates/h12tiny`, and the nested runtime crates resolve as path packages. `cargo update -p h12tiny` completed that lock update. A full benchmark binary was not rebuilt; an earlier offline run was blocked by uncached `hmac`, which is separate from the version mismatch.
 - **Recommendation:** Update the benchmark dependency and its lockfile. Give this non-published local consumer a dependency policy that survives facade releases, or include its requirement and lockfile in release planning. Verify the benchmark's locked build after dependency resolution is available.
 - **Fix with:** `single-source-of-truth`
 - **Effort:** S (hours)
@@ -28,7 +28,7 @@ Next: 27
 - **Recommendation:** Preserve state bound to child endpoints, or make state binding a single explicit construction step that rejects conflicting configured routers. Define nested fallback and CORS ownership alongside state so composition cannot silently discard a supplied policy. Verify differently configured children through both `nest` and `merge`.
 - **Fix with:** `api-surface-and-module-boundaries`
 - **Effort:** M (days)
-- **Design:** [Router composition ownership](docs/rfc/H12T-20-router-composition.md).
+- **Design:** [Router composition ownership](rfc/H12T-20-router-composition.md).
 
 ### H12T-21 · P2 · Blocking chunk decoding loses framing progress after a read timeout
 
@@ -74,7 +74,7 @@ Next: 27
 - **Recommendation:** Bound TLS acceptance and protocol detection in the production lifecycle, release the admission slot on expiry, and report a typed timeout. Keep setup separate from established-stream lifetime and shutdown draining. Verify with a controlled pending-I/O fixture and a positive completed-setup case.
 - **Fix with:** `lifecycle-concurrency`
 - **Effort:** M (days)
-- **Design:** [Connection setup deadlines](docs/rfc/H12T-25-connection-setup-deadline.md).
+- **Design:** [Connection setup deadlines](rfc/H12T-25-connection-setup-deadline.md).
 
 ### H12T-26 · P2 · TLS session resumption can retain approval across system-trust changes
 
@@ -84,4 +84,4 @@ Next: 27
 - **Recommendation:** Preserve strict trust freshness by disabling resumption for managed system trust, or invalidate cached sessions before any resume attempt when that policy changes. Keep explicit-root and caller-supplied configuration policy separate. Settle the performance/freshness choice in the RFC before implementing it.
 - **Fix with:** `security`
 - **Effort:** M (days)
-- **Design:** [System trust and session resumption](docs/rfc/H12T-26-trust-resumption.md).
+- **Design:** [System trust and session resumption](rfc/H12T-26-trust-resumption.md).

@@ -16,12 +16,12 @@ h12tiny = { version = "0.9", default-features = false, features = [
 ] }
 bytes = "1"
 http-body-util = "0.1"
-smol = "2"
+smol = { package = "laputa-smol", version = "0.3" }
 ```
 
 The facade requires Rust 1.89, declared in its manifest. Component crates can
 be used directly when you want a smaller dependency graph; each declares its
-own `rust-version` in its manifest. See [feature selection](docs/features.md).
+own `rust-version` in its manifest. See [feature selection](../../docs/h12tiny/features.md).
 
 ## Make an async request
 
