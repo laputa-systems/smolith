@@ -15,7 +15,7 @@ atty = "0.2"
 bytes = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
-tracing-tree = "0.2"
+tracing-tree = "0.4"
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 futures-io = "0.3"
 futures-lite = { workspace = true, features = ["std"] }
