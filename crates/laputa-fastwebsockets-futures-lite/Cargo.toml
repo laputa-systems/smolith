@@ -23,3 +23,8 @@ bytes = "1.5.0"
 [dev-dependencies]
 fastrand = { workspace = true, features = ["std"] }
 futures-lite = { workspace = true, features = ["std"] }
+rustybench = "0.4"
+
+[[bench]]
+name = "unmask"
+harness = false

@@ -1162,6 +1162,7 @@ dependencies = [
  "getrandom 0.4.3",
  "laputa-fastrand",
  "laputa-futures-lite",
+ "rustybench",
  "simdutf8",
  "thiserror",
 ]

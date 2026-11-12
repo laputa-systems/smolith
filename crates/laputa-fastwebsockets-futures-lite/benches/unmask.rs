@@ -1,18 +1,20 @@
-use criterion::*;
+use rustybench::black_box;
+use rustybench::counter::BytesCount;
 
-fn benchmark(c: &mut Criterion) {
-  const STREAM_SIZE: usize = 64 << 20;
-
-  let mut data: Vec<u8> = (0..STREAM_SIZE).map(|_| rand::random()).collect();
-  let mut group = c.benchmark_group("unmask2");
-  group.throughput(Throughput::Bytes(STREAM_SIZE as u64));
-  group.bench_function("unmask 64 << 20", |b| {
-    b.iter(|| {
-      fastwebsockets::unmask(black_box(&mut data), [1, 2, 3, 4]);
-    });
-  });
-  group.finish();
+fn main() {
+    rustybench::main();
 }
 
-criterion_group!(benches, benchmark);
-criterion_main!(benches);
+const STREAM_SIZE: usize = 64 << 20;
+
+#[rustybench::bench]
+fn unmask_64_mib(bencher: rustybench::Bencher) {
+    let mut data: Vec<u8> = Vec::with_capacity(STREAM_SIZE);
+    data.resize_with(STREAM_SIZE, || fastrand::u8(..));
+
+    bencher
+        .counter(BytesCount::new(STREAM_SIZE as u64))
+        .bench_local(|| {
+            fastwebsockets::unmask(black_box(&mut data), [1, 2, 3, 4]);
+        });
+}
