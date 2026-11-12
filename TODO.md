@@ -10,11 +10,3 @@ Next: 14
 - **Fix with:** `stuff-registries`
 - **Effort:** S
 
-### SMOL-12 · P3 · Ordered timer storage shifts the whole queue during cancellation
-
-- **Area:** Performance
-- **Where:** `crates/async-io/src/reactor.rs:199`, `crates/async-io/src/reactor.rs:369`, `crates/async-io/src/reactor.rs:387`, `crates/async-io/src/reactor.rs:396`, `crates/async-io/src/reactor.rs:410`, `crates/async-io/benches/timer.rs:13`
-- **Problem:** Commit `a7a3d7e` replaced the ordered timer map with an FxHashMap plus a sorted Vec. Each interior insertion or removal shifts the Vec while holding the global timer mutex; expiring a prefix shifts the remaining timers. Cancelling N live timers in deadline order therefore moves a quadratic number of keys. This is source-proven scaling cost, not a measured latency regression. The existing registration benchmark uses one-second timers, so a large setup can expire before the timed region and does not establish cancellation cost with a stable live set.
-- **Recommendation:** Measure a fixed, still-live timer set through registration, out-of-order insertion, cancellation, and expiry against the previous ordered-map implementation. Restore logarithmic ordered updates or choose an equivalent structure if representative workloads confirm the cost. Keep equal-deadline ordering and cancellation semantics, and report live counts and completed work alongside timings.
-- **Fix with:** `make-it-fast`
-- **Effort:** M

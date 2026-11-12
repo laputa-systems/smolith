@@ -11,7 +11,7 @@ fn main() {
 
 /// Create a new `Timer` and poll it once to register it into the timer wheel.
 fn make_timer() -> Timer {
-    let mut timer = Timer::after(Duration::from_secs(1));
+    let mut timer = Timer::after(Duration::from_secs(3600));
     future::block_on(future::poll_once(&mut timer));
     timer
 }
@@ -27,4 +27,14 @@ fn register_timer(bencher: Bencher, prev_timer_count: usize) {
     });
 
     drop(timers);
+}
+
+/// Drop a still-live set. The deadline is an hour out, so none of the timers expire during setup.
+#[rustybench::bench(args = [1_000, 10_000])]
+fn cancel_live_timers(bencher: Bencher, count: usize) {
+    bencher.bench_local(|| {
+        let timers: Vec<_> = (0..count).map(|_| make_timer()).collect();
+        assert_eq!(timers.len(), count);
+        drop(timers);
+    });
 }

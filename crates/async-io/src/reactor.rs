@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::future::Future;
 use std::io;
@@ -12,7 +13,6 @@ use std::time::{Duration, Instant};
 
 use concurrent_queue::ConcurrentQueue;
 use polling::{Event, Events, Poller};
-use rustc_hash::FxHashMap;
 use slab::Slab;
 
 // Choose the proper implementation of `Registration` based on the target platform.
@@ -367,57 +367,38 @@ impl ReactorLock<'_> {
 /// "the next timer" is `order.first()` and "every timer up to now" is a prefix of `order`. Both
 /// are updated together and always describe the same key set.
 struct Timers {
-    /// Wakers of the registered timers, keyed by `(deadline, timer ID)`.
-    entries: FxHashMap<(Instant, usize), Waker>,
-
-    /// The keys of `entries`, sorted by `(deadline, timer ID)`.
-    order: Vec<(Instant, usize)>,
+    /// Wakers keyed by `(deadline, timer ID)`, ordered by that key.
+    entries: BTreeMap<(Instant, usize), Waker>,
 }
 
 impl Timers {
     /// Creates an empty timer set.
     fn new() -> Self {
         Self {
-            entries: FxHashMap::default(),
-            order: Vec::new(),
+            entries: BTreeMap::new(),
         }
     }
 
     /// Inserts a timer, replacing the waker if the key is already registered.
     fn insert(&mut self, key: (Instant, usize), waker: Waker) {
-        if self.entries.insert(key, waker).is_none() {
-            // The key was not registered, so it cannot be in `order` either.
-            let pos = self.order.binary_search(&key).unwrap_err();
-            self.order.insert(pos, key);
-        }
+        self.entries.insert(key, waker);
     }
 
     /// Removes the timer with the given key, if it is registered.
     fn remove(&mut self, key: &(Instant, usize)) {
-        if self.entries.remove(key).is_some() {
-            if let Ok(pos) = self.order.binary_search(key) {
-                self.order.remove(pos);
-            }
-        }
+        self.entries.remove(key);
     }
 
     /// Returns the deadline of the earliest registered timer.
     fn next_deadline(&self) -> Option<Instant> {
-        self.order.first().map(|(when, _)| *when)
+        self.entries.keys().next().map(|(when, _)| *when)
     }
 
     /// Removes every timer whose key sorts before `cutoff` and returns them in deadline order.
     fn split_off(&mut self, cutoff: &(Instant, usize)) -> Vec<((Instant, usize), Waker)> {
-        let split = self.order.partition_point(|key| key < cutoff);
-        let mut ready = Vec::with_capacity(split);
-
-        for key in self.order.drain(..split) {
-            if let Some(waker) = self.entries.remove(&key) {
-                ready.push((key, waker));
-            }
-        }
-
-        ready
+        let pending = self.entries.split_off(cutoff);
+        let ready = core::mem::replace(&mut self.entries, pending);
+        ready.into_iter().collect()
     }
 }
 
