@@ -268,3 +268,36 @@ upstream_name = "waker-fn"
 upstream_version = "1.2.0"
 license = "Apache-2.0 OR MIT"
 
+# Protocol forks keep an independent SemVer line. `family` exempts them from
+# the shared runtime version and from the `laputa-{component}` package rule.
+# Recorded commits are upstream baselines, not the imported h12tiny revision.
+# fastwebsockets has no recorded upstream commit or version in the fork.
+
+[components.h2]
+family = "protocol"
+upstream = "https://github.com/hyperium/h2"
+commit = "b0e890842ac16d3c76836fd4fcc06421acb15fa7"
+package = "laputa-h2-futures-lite"
+version = "0.4.20-beta.2"
+upstream_name = "h2"
+upstream_version = "0.4.20"
+license = "MIT"
+
+[components.hyper]
+family = "protocol"
+upstream = "https://github.com/hyperium/hyper"
+commit = "7f67699ce32d717081deb7018b4da7d679277ac0"
+package = "laputa-hyper-futures-lite"
+version = "1.12.0-beta.1"
+upstream_name = "hyper"
+upstream_version = "1.12.0"
+license = "MIT"
+
+[components.fastwebsockets]
+family = "protocol"
+upstream = "https://github.com/denoland/fastwebsockets"
+package = "laputa-fastwebsockets-futures-lite"
+version = "0.10.2"
+upstream_name = "fastwebsockets"
+license = "Apache-2.0"
+

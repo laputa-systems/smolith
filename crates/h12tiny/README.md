@@ -70,4 +70,4 @@ Concrete client, server, and web timeouts and size limits are in
 MIT. See [LICENSE](LICENSE).
 
 For source, examples, and support, see the
-[h12tiny repository](https://github.com/laputa-systems/h12tiny).
+[h12tiny repository](https://github.com/laputa-systems/smolith).

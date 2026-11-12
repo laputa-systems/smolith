@@ -25,12 +25,16 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from identity import load_release
+from identity import requirement_matches
+from inventory import load
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION, COMPONENTS = load_release(ROOT)
-UPSTREAM_NAMES = {spec["upstream_name"] for spec in COMPONENTS.values()}
-OWNED_NAMES = {spec["package"] for spec in COMPONENTS.values()}
+INVENTORY = load(ROOT)
+VERSION = INVENTORY.workspace_version
+COMPONENTS = INVENTORY.components
+UPSTREAM_NAMES = INVENTORY.upstream_names
+OWNED_NAMES = set(INVENTORY.packages)
+OWNED_VERSIONS = {name: info["version"] for name, info in INVENTORY.packages.items()}
 
 
 class RegistryState:
@@ -209,52 +213,8 @@ def index_line(meta, crate):
     return json.dumps(line, separators=(",", ":"))
 
 
-def metadata():
-    raw = subprocess.check_output(["cargo", "metadata", "--format-version", "1", "--no-deps"], cwd=ROOT)
-    return json.loads(raw)
-
-
 def publish_order():
-    meta = metadata()
-    packages = {pkg["id"]: pkg for pkg in meta["packages"]}
-    names = {}
-    for member in meta["workspace_members"]:
-        pkg = packages[member]
-        if pkg["name"].startswith("laputa-"):
-            names[pkg["name"]] = member
-    full = subprocess.check_output(["cargo", "metadata", "--format-version", "1"], cwd=ROOT)
-    resolved = json.loads(full)
-    nodes = {node["id"]: node for node in resolved["resolve"]["nodes"]}
-    incoming = {name: set() for name in names}
-    for name, member in names.items():
-        for dep in nodes[member]["deps"]:
-            for kind in dep["dep_kinds"]:
-                if kind["kind"] not in (None, "build"):
-                    continue
-                dep_name = packages_by_resolve_id(resolved, dep["pkg"])
-                if dep_name in names:
-                    incoming[name].add(dep_name)
-    ready = sorted(name for name, deps in incoming.items() if not deps)
-    order = []
-    while ready:
-        name = ready.pop(0)
-        order.append(name)
-        for other in sorted(incoming):
-            if name in incoming[other]:
-                incoming[other].remove(name)
-                if not incoming[other] and other not in order and other not in ready:
-                    ready.append(other)
-        ready.sort()
-    if len(order) != len(names):
-        raise SystemExit(f"dependency cycle among {sorted(set(names) - set(order))}")
-    return order
-
-
-def packages_by_resolve_id(meta, pkg_id):
-    for pkg in meta["packages"]:
-        if pkg["id"] == pkg_id:
-            return pkg["name"]
-    raise KeyError(pkg_id)
+    return list(INVENTORY.order)
 
 
 def git_dirty():
@@ -311,58 +271,87 @@ def package_name(dep_name, spec):
 
 
 def manifest_paths():
-    meta = metadata()
-    return {
-        pkg["name"]: Path(pkg["manifest_path"])
-        for pkg in meta["packages"]
-        if pkg["name"].startswith("laputa-")
-    }
+    return {name: ROOT / info["manifest"] for name, info in INVENTORY.packages.items()}
 
 
-def disabled_default_features(manifest):
+def workspace_dependencies():
+    cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    return cargo["workspace"].get("dependencies", {})
+
+
+def disabled_default_features(manifest, workspace_deps):
     found = set()
     for kind, dep_name, spec in iter_dep_tables(manifest):
         if kind == "dev-dependencies":
             continue
-        if isinstance(spec, dict) and spec.get("default-features") is False:
+        inherited = isinstance(spec, dict) and spec.get("workspace") is True
+        base = workspace_deps.get(dep_name, {}) if inherited and isinstance(workspace_deps.get(dep_name), dict) else {}
+        member_off = isinstance(spec, dict) and spec.get("default-features") is False
+        if member_off or base.get("default-features") is False:
             found.add((kind, dep_name))
     return found
 
 
+def license_files_present(license_text, names):
+    basenames = {Path(item).name for item in names if item.count("/") == 1 and "LICENSE" in Path(item).name.upper()}
+    mit = "MIT" in license_text
+    apache = "Apache" in license_text
+    if mit and apache:
+        return {"LICENSE-MIT", "LICENSE-APACHE"} <= basenames or "LICENSE" in basenames
+    if mit:
+        return bool({"LICENSE", "LICENSE-MIT"} & basenames)
+    if apache:
+        return bool({"LICENSE", "LICENSE-APACHE"} & basenames)
+    return bool(basenames)
+
+
 def check_artifacts(state, order):
     sources = manifest_paths()
+    workspace_deps = workspace_dependencies()
     for name in order:
-        crate = state.crate(name, VERSION)
+        version = OWNED_VERSIONS[name]
+        crate = state.crate(name, version)
         if crate is None:
-            raise SystemExit(f"missing uploaded crate {name} {VERSION}")
-        source = tomllib.loads(sources[name].read_text())
-        required = disabled_default_features(source)
+            raise SystemExit(f"missing uploaded crate {name} {version}")
+        source = tomllib.loads(sources[name].read_text(encoding="utf-8"))
+        required = disabled_default_features(source, workspace_deps)
         with tarfile.open(fileobj=io.BytesIO(crate), mode="r:gz") as tar:
             names = tar.getnames()
             manifest_name = next(item for item in names if item.endswith("/Cargo.toml") and item.count("/") == 1)
-            manifest = tomllib.loads(tar.extractfile(manifest_name).read().decode())
-            license_text = manifest["package"]["license"]
-            if "MIT" in license_text and not any(item.endswith("/LICENSE-MIT") for item in names):
-                raise SystemExit(f"{name} package is missing LICENSE-MIT")
-            if "Apache" in license_text and not any(item.endswith("/LICENSE-APACHE") for item in names):
-                raise SystemExit(f"{name} package is missing LICENSE-APACHE")
+            manifest_text = tar.extractfile(manifest_name).read().decode()
+            if "/Users/" in manifest_text or "../h12tiny" in manifest_text or "../smolith" in manifest_text:
+                raise SystemExit(f"{name} packaged manifest points outside the package")
+            manifest = tomllib.loads(manifest_text)
+            license_text = manifest["package"].get("license", "")
+            if not license_files_present(license_text, names):
+                raise SystemExit(f"{name} package is missing its license file")
             if "patch" in manifest:
                 raise SystemExit(f"{name} packaged manifest contains [patch]")
             packaged = {}
             for kind, dep_name, spec in iter_dep_tables(manifest):
                 if kind == "dev-dependencies":
                     continue
+                if isinstance(spec, dict) and "path" in spec:
+                    raise SystemExit(f"{name} packaged {kind} {dep_name} keeps a path")
                 pkg = package_name(dep_name, spec)
                 if pkg in UPSTREAM_NAMES:
                     raise SystemExit(f"{name} packaged {kind} names upstream package {pkg}")
-                if pkg == "tokio" or pkg.startswith("tokio"):
+                if pkg == "tokio" or (isinstance(pkg, str) and pkg.startswith("tokio")):
                     raise SystemExit(f"{name} packaged {kind} names {pkg}")
+                if isinstance(spec, dict) and spec.get("registry") not in (None, "crates-io"):
+                    raise SystemExit(f"{name} packaged {kind} {dep_name} uses registry {spec.get('registry')}")
+                if pkg in OWNED_VERSIONS:
+                    requirement = spec.get("version") if isinstance(spec, dict) else spec
+                    if not requirement_matches(requirement, OWNED_VERSIONS[pkg]):
+                        raise SystemExit(
+                            f"{name} packaged {dep_name} requires {requirement}, expected {OWNED_VERSIONS[pkg]}"
+                        )
                 packaged.setdefault((kind, dep_name), spec)
             for key in required:
                 spec = packaged.get(key)
                 if not isinstance(spec, dict) or spec.get("default-features") is not False:
                     raise SystemExit(f"{name} packaged {key[0]} {key[1]} dropped default-features = false")
-        print(f"artifact {name} licenses and dependency names ok", flush=True)
+        print(f"artifact {name} {version} licenses and dependency names ok", flush=True)
 
 
 def fresh_consumer(index):
@@ -428,6 +417,82 @@ mod tests {
     print(f"fresh consumer laputa-smol source {source}", flush=True)
 
 
+def compile_consumer(index, name, cargo_toml, source):
+    consumer = ROOT / ".work" / name
+    if consumer.exists():
+        shutil.rmtree(consumer)
+    (consumer / "src").mkdir(parents=True)
+    (consumer / "Cargo.toml").write_text(cargo_toml, encoding="utf-8")
+    (consumer / "src" / "lib.rs").write_text(source, encoding="utf-8")
+    manifest = consumer / "Cargo.toml"
+    subprocess.check_call(
+        ["cargo", "check", "--manifest-path", str(manifest), "--offline", *cargo_config(index)],
+        cwd="/",
+    )
+    raw = subprocess.check_output(
+        ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(manifest), "--offline", *cargo_config(index)],
+        cwd="/",
+    )
+    meta = json.loads(raw)
+    for pkg in meta["packages"]:
+        if pkg["name"] in OWNED_NAMES:
+            source_id = pkg["source"] or ""
+            if "127.0.0.1" not in source_id or source_id.startswith("path+") or "crates.io" in source_id:
+                raise SystemExit(f"{name} resolved {pkg['name']} from {source_id}")
+        if "path" in (pkg.get("source") or "") and pkg["name"] in OWNED_NAMES:
+            raise SystemExit(f"{name} resolved {pkg['name']} from a path")
+    print(f"registry consumer {name} ok", flush=True)
+
+
+def http_consumers(index):
+    header = """[workspace]
+resolver = "2"
+
+[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+"""
+    cases = (
+        (
+            "consumer-http1",
+            'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["client", "server", "http1"] }\n',
+            "pub fn touch() {\n    let _ = h12tiny::client::Client::<()>::builder;\n    let _ = h12tiny::server::serve::<(), ()>;\n}\n",
+        ),
+        (
+            "consumer-http2",
+            'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["client", "server", "http2"] }\n',
+            "pub fn touch() {\n    let _ = std::any::type_name::<h12tiny::client::Protocol>();\n    let _ = std::any::type_name::<h12tiny::client::Http2Settings>();\n}\n",
+        ),
+        (
+            "consumer-tls",
+            'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["client", "tls"] }\n',
+            "pub fn touch() {\n    let _ = h12tiny::client::ClientTlsConfigBuilder::new;\n}\n",
+        ),
+        (
+            "consumer-blocking",
+            'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["client-sync"] }\n',
+            "pub fn touch() {\n    let _ = h12tiny::client_sync::Client::new;\n}\n",
+        ),
+        (
+            "consumer-web",
+            'h12tiny = { version = "0.9.0", registry = "staging", default-features = false, features = ["web", "websocket"] }\n',
+            "pub fn touch() {\n    let _ = std::any::type_name::<h12tiny::web::Router<()>>();\n    let _ = std::any::type_name::<h12tiny::web::WebSocketFrame<'_>>();\n}\n",
+        ),
+        (
+            "consumer-normalize",
+            'h12tiny-client-normalize = { version = "0.9.0", registry = "staging" }\n',
+            "pub fn touch() {\n    let _ = std::any::type_name::<h12tiny_client_normalize::Origin>();\n}\n",
+        ),
+    )
+    for name, dependency, source in cases:
+        cargo_toml = header.format(name=name.replace("-", "_")) + dependency
+        compile_consumer(index, name, cargo_toml, source)
+
+
 def main(only=None):
     os.chdir(ROOT)
     tmp = ROOT / ".work" / "tmp"
@@ -457,6 +522,7 @@ def main(only=None):
         check_artifacts(state, order)
         if only is None:
             fresh_consumer(index)
+            http_consumers(index)
     finally:
         server.shutdown()
     print("STAGING PASSED", flush=True)

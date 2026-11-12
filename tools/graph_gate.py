@@ -5,9 +5,9 @@ import subprocess
 import sys
 import tomllib
 
-from identity import load_release, self_check
+from identity import self_check
+from inventory import load
 
-ALLOWED_EXTRA_MEMBERS = {"smolith-qualify"}
 DEPENDENCY_TABLES = ("dependencies", "build-dependencies", "dev-dependencies")
 
 def load_toml(path):
@@ -49,6 +49,8 @@ def resolve_dependency(name, spec, workspace_deps):
 
 def is_owned_edge(name, spec, upstream_names, laputa_names):
     package = spec.get("package", name)
+    if isinstance(package, str) and package.startswith("laputa-"):
+        return True
     return name in upstream_names or package in upstream_names or package in laputa_names
 
 def versionless_owned_paths(doc, workspace_deps, upstream_names, laputa_names):
@@ -64,25 +66,29 @@ def versionless_owned_paths(doc, workspace_deps, upstream_names, laputa_names):
                 found.append(f"[{kind}] {name}")
     return found
 
-def check_no_patches(root_dir):
-    paths = [os.path.join(root_dir, "Cargo.toml")]
+def check_no_patches(root_dir, inventory):
+    paths = [os.path.join(root_dir, relative) for relative in inventory.member_manifests]
+    paths.append(os.path.join(root_dir, "Cargo.toml"))
     crates_dir = os.path.join(root_dir, "crates")
     for name in os.listdir(crates_dir):
         path = os.path.join(crates_dir, name, "Cargo.toml")
         if os.path.isfile(path):
             paths.append(path)
-    for path in paths:
+    for path in dict.fromkeys(paths):
         if "patch" in load_toml(path):
             raise ValueError(f"{path} contains a [patch] table")
 
-def check_member_manifests(root_dir, upstream_names, laputa_names):
+def check_member_manifests(root_dir, inventory):
     workspace_deps = load_toml(os.path.join(root_dir, "Cargo.toml")).get("workspace", {}).get("dependencies", {})
-    crates_dir = os.path.join(root_dir, "crates")
-    for name in sorted(upstream_names):
-        path = os.path.join(crates_dir, name, "Cargo.toml")
+    upstream_names = inventory.upstream_names
+    owned_names = inventory.owned_names
+    if not inventory.member_manifests:
+        raise ValueError("workspace has no member manifests")
+    for relative in inventory.member_manifests:
+        path = os.path.join(root_dir, relative)
         if not os.path.isfile(path):
             raise ValueError(f"Missing member crate manifest: {path}")
-        problems = versionless_owned_paths(load_toml(path), workspace_deps, upstream_names, laputa_names)
+        problems = versionless_owned_paths(load_toml(path), workspace_deps, upstream_names, owned_names)
         if problems:
             raise ValueError(f"{path} has versionless path edges: {', '.join(problems)}")
 
@@ -147,40 +153,41 @@ def self_check_manifests():
     if not versionless_owned_paths(inherited, bare, upstream, laputa):
         raise ValueError("workspace inheritance hid a versionless path")
 
-def check_metadata(metadata_json, version, upstream_names, laputa_names, label=""):
+def check_metadata(metadata_json, versions, upstream_names, label=""):
     meta = json.loads(metadata_json)
     packages_by_id = {p["id"]: p for p in meta["packages"]}
     workspace_members = set(meta["workspace_members"])
+    owned_names = set(versions)
 
     member_names = set()
     for pid in workspace_members:
         p = packages_by_id[pid]
         member_names.add(p["name"])
-        if p["version"] != version:
-            raise ValueError(f"[{label}] Member {p['name']} has version {p['version']} != {version}")
         if p["source"] is not None:
             raise ValueError(f"[{label}] Member {p['name']} source is {p['source']}, expected path (None)")
-        if p["name"] in ALLOWED_EXTRA_MEMBERS:
-            manifest = p.get("manifest_path", "")
-            with open(manifest, "r") as handle:
-                if "publish = false" not in handle.read():
-                    raise ValueError(f"[{label}] Extra member {p['name']} must set publish = false")
-        elif p["name"] not in laputa_names:
-            raise ValueError(f"[{label}] Member {p['name']} not in expected laputa-* set")
+        if p["name"] in versions:
+            if p["version"] != versions[p["name"]]:
+                raise ValueError(
+                    f"[{label}] Member {p['name']} has version {p['version']} != {versions[p['name']]}"
+                )
+            continue
+        manifest = p.get("manifest_path", "")
+        with open(manifest, "r") as handle:
+            if "publish = false" not in handle.read():
+                raise ValueError(
+                    f"[{label}] Member {p['name']} is not publishable inventory and does not set publish = false"
+                )
 
-    missing = laputa_names - member_names
+    missing = owned_names - member_names
     if missing:
         raise ValueError(f"[{label}] Missing owned members: {sorted(missing)}")
-    unexpected = member_names - laputa_names - ALLOWED_EXTRA_MEMBERS
-    if unexpected:
-        raise ValueError(f"[{label}] Unexpected members: {sorted(unexpected)}")
 
-    for laputa_name in laputa_names:
-        matching = [p for p in meta["packages"] if p["name"] == laputa_name]
+    for owned_name, version in versions.items():
+        matching = [p for p in meta["packages"] if p["name"] == owned_name]
         if len(matching) != 1:
-            raise ValueError(f"[{label}] Expected 1 version of {laputa_name}, got {len(matching)}")
+            raise ValueError(f"[{label}] Expected 1 version of {owned_name}, got {len(matching)}")
         if matching[0]["version"] != version:
-            raise ValueError(f"[{label}] {laputa_name} version is {matching[0]['version']} != {version}")
+            raise ValueError(f"[{label}] {owned_name} version is {matching[0]['version']} != {version}")
 
     # Traverse normal and build dependency graph
     resolve_nodes = {n["id"]: n for n in meta["resolve"]["nodes"]}
@@ -222,7 +229,7 @@ def check_metadata(metadata_json, version, upstream_names, laputa_names, label="
             raise ValueError(f"[{label}] Tokio package {pname} found in normal/build path: {pid}")
 
         # 3. Owned components must resolve to path source (None)
-        if pname in laputa_names:
+        if pname in versions:
             if p["source"] is not None:
                 raise ValueError(f"[{label}] Owned component {pname} resolved from non-path source: {p['source']}")
 
@@ -230,14 +237,14 @@ def run_gate():
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     print(f"Running graph gate on {root_dir}")
     self_check()
-    version, components = load_release(root_dir)
-    upstream_names = {spec["upstream_name"] for spec in components.values()}
-    laputa_names = {spec["package"] for spec in components.values()}
+    inventory = load(root_dir)
+    versions = {name: info["version"] for name, info in inventory.packages.items()}
+    upstream_names = inventory.upstream_names
 
     print("Checking manifests for forbidden patches and versionless edges...")
     self_check_manifests()
-    check_no_patches(root_dir)
-    check_member_manifests(root_dir, upstream_names, laputa_names)
+    check_no_patches(root_dir, inventory)
+    check_member_manifests(root_dir, inventory)
     print("Manifest checks passed.")
 
     # 2. Targets to test
@@ -270,15 +277,25 @@ def run_gate():
                 label_parts.append("default-features")
             label = ", ".join(label_parts)
 
-            cmd = ["cargo", "metadata", "--format-version", "1"] + fargs
+            cmd = [
+                "cargo",
+                "metadata",
+                "--format-version",
+                "1",
+                "--manifest-path",
+                os.path.join(root_dir, "Cargo.toml"),
+            ] + fargs
             if target:
                 cmd.extend(["--filter-platform", target])
 
             print(f"Evaluating {label}...")
-            output = subprocess.check_output(cmd, cwd=root_dir, text=True)
-            check_metadata(output, version, upstream_names, laputa_names, label)
+            # Resolve crates.io. The repository source replacement cannot see
+            # every locked crate, and a path or registry identity does not
+            # depend on that mirror.
+            output = subprocess.check_output(cmd, cwd="/", text=True)
+            check_metadata(output, versions, upstream_names, label)
 
-    print(f"GRAPH GATE PASSED: all {len(laputa_names)} owned components resolved to laputa-* path sources, no upstream packages or tokio in normal/build paths, one version per owned component, no unpublished paths or workspace patches.")
+    print(f"GRAPH GATE PASSED: all {len(versions)} owned packages resolved to path sources, no upstream packages or tokio in normal/build paths, one version per owned package, no unpublished paths or workspace patches.")
 
 if __name__ == "__main__":
     try:

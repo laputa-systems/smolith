@@ -6,7 +6,7 @@ rust-version = "1.89"
 description = "Operating-system TLS trust for h12tiny clients"
 license = "MIT"
 
-repository = "https://github.com/laputa-systems/h12tiny"
+repository = "https://github.com/laputa-systems/smolith"
 
 [dependencies]
 base64 = { workspace = true }

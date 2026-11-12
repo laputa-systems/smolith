@@ -12,7 +12,7 @@ publish = false
 [workspace.dependencies]
 base64 = "0.23"
 futures-channel = "0.3.34"
-h12tiny = { version = "0.8.0", path = "../..", default-features = false }
+h12tiny = { version = "0.9.0", path = "../../crates/h12tiny", default-features = false }
 hmac = "0.12.1"
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 deser = { version = "0.10.2", features = ["derive"] }
@@ -20,7 +20,7 @@ deser-json = "0.10.2"
 deser-value = "0.10.2"
 sha2 = "0.10.9"
 signal-hook = "0.3.18"
-smol = { package = "laputa-smol", version = "0.3.0" }
+smol = { package = "laputa-smol", version = "0.3.0", path = "../../crates/smol" }
 
 [profile.dev]
 debug = "line-tables-only"

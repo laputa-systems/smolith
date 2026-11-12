@@ -8,6 +8,6 @@ description = "Futures-I/O test support for the Laputa protocol forks"
 publish = false
 
 [dependencies]
-async-io = { package = "laputa-async-io", version = "0.3.0" }
-futures-io = "0.3"
-futures-lite = { package = "laputa-futures-lite", version = "0.3.0", default-features = false, features = ["std"] }
+async-io = { workspace = true }
+futures-io = { workspace = true }
+futures-lite = { workspace = true, features = ["std"] }

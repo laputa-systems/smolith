@@ -1,13 +1,29 @@
 """Release version and owned-crate identity.
 
-[workspace.package].version in the root Cargo.toml owns the version.
-[components] in UPSTREAM.toml owns crate identity. A workspace dependency
-on one of those crates, and the external consumer's path dependency, must
-use that same version.
+[workspace.package].version in the root Cargo.toml owns the runtime family.
+[components] in UPSTREAM.toml owns upstream-derived crate identity. Runtime
+components share that version and the laputa-{name} package. Protocol
+components set family = "protocol" and keep an independent version and
+package name. First-party HTTP packages are not components.
+
+A workspace dependency on an owned component must require that component's
+version. The external consumer's smol dependency must require the runtime
+version.
 """
 
 import tomllib
 from pathlib import Path
+
+
+def family_of(spec):
+    family = spec.get("family", "runtime")
+    if family not in ("runtime", "protocol"):
+        raise ValueError(f"component family {family} is not runtime or protocol")
+    return family
+
+
+def requirement_matches(requirement, version):
+    return requirement == version or requirement == f"={version}"
 
 
 def load_release(root):
@@ -30,19 +46,30 @@ def validate_release(cargo, upstream):
         raise ValueError("workspace.package.version is missing")
     if not isinstance(components, dict) or not components:
         raise ValueError("UPSTREAM.toml has no components")
+    packages = {}
     for key, spec in components.items():
         if not isinstance(spec, dict):
             raise ValueError(f"component {key} is not a table")
-        for field in ("package", "version", "upstream_name", "upstream_version"):
+        family = family_of(spec)
+        for field in ("package", "version", "upstream_name"):
             if not isinstance(spec.get(field), str) or not spec[field]:
                 raise ValueError(f"component {key} is missing {field}")
+        if family == "runtime":
+            if not isinstance(spec.get("upstream_version"), str) or not spec["upstream_version"]:
+                raise ValueError(f"component {key} is missing upstream_version")
+            if spec["package"] != f"laputa-{key}":
+                raise ValueError(f"component {key} package is {spec['package']}")
+            if spec["version"] != version:
+                raise ValueError(f"component {key} version {spec['version']} != workspace {version}")
+        elif spec.get("upstream_version") is not None and (
+            not isinstance(spec.get("upstream_version"), str) or not spec["upstream_version"]
+        ):
+            raise ValueError(f"component {key} upstream_version is empty")
         if spec["upstream_name"] != key:
             raise ValueError(f"component {key} upstream_name is {spec['upstream_name']}")
-        if spec["package"] != f"laputa-{key}":
-            raise ValueError(f"component {key} package is {spec['package']}")
-        if spec["version"] != version:
-            raise ValueError(f"component {key} version {spec['version']} != workspace {version}")
-    laputa = {spec["package"] for spec in components.values()}
+        if spec["package"] in packages:
+            raise ValueError(f"component {key} repeats package {spec['package']}")
+        packages[spec["package"]] = spec
     for name, spec in cargo.get("workspace", {}).get("dependencies", {}).items():
         if isinstance(spec, str):
             dep_version = spec
@@ -52,7 +79,15 @@ def validate_release(cargo, upstream):
             package = spec.get("package", name)
         else:
             raise ValueError(f"workspace.dependencies {name} has an unsupported specification")
-        if package in laputa and dep_version != version:
+        owned = packages.get(package)
+        if owned is None:
+            continue
+        if family_of(owned) == "protocol":
+            if not requirement_matches(dep_version, owned["version"]):
+                raise ValueError(
+                    f"workspace.dependencies {name} version {dep_version} != {owned['version']}"
+                )
+        elif dep_version != version:
             raise ValueError(f"workspace.dependencies {name} version {dep_version} != workspace {version}")
     return version, components
 
@@ -106,3 +141,52 @@ def self_check():
             raise
     else:
         raise ValueError("a workspace dependency version drift was accepted")
+    protocol_cargo = {
+        "workspace": {
+            "package": {"version": "0.1.0"},
+            "dependencies": {
+                "h2": {
+                    "package": "laputa-h2-futures-lite",
+                    "version": "=0.4.20-beta.2",
+                    "path": "crates/laputa-h2-futures-lite",
+                },
+                "bytes": "1.12.1",
+            },
+        }
+    }
+    protocol_upstream = {
+        "components": {
+            "h2": {
+                "family": "protocol",
+                "package": "laputa-h2-futures-lite",
+                "version": "0.4.20-beta.2",
+                "upstream_name": "h2",
+                "upstream_version": "0.4.20",
+            },
+            "fastwebsockets": {
+                "family": "protocol",
+                "package": "laputa-fastwebsockets-futures-lite",
+                "version": "0.10.2",
+                "upstream_name": "fastwebsockets",
+            },
+        }
+    }
+    protocol_version, protocol_components = validate_release(protocol_cargo, protocol_upstream)
+    if protocol_version != "0.1.0" or protocol_components["h2"]["version"] != "0.4.20-beta.2":
+        raise ValueError("protocol identity fixture did not round-trip")
+    missing_runtime_upstream = {
+        "components": {
+            "async-io": {
+                "package": "laputa-async-io",
+                "version": "0.1.0",
+                "upstream_name": "async-io",
+            }
+        }
+    }
+    try:
+        validate_release(cargo, missing_runtime_upstream)
+    except ValueError as error:
+        if "upstream_version" not in str(error):
+            raise
+    else:
+        raise ValueError("a runtime component without upstream_version was accepted")

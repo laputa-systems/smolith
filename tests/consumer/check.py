@@ -49,6 +49,7 @@ def metadata():
         text=True,
         capture_output=True,
         env=env,
+        cwd="/",
     )
     if result.returncode != 0:
         sys.stderr.write(result.stderr)
@@ -79,10 +80,15 @@ def closure(meta):
 
 def assert_graph(meta):
     components = toml_doc(os.path.join(ROOT, "UPSTREAM.toml"))["components"]
+    runtime = [item for item in components.values() if item.get("family", "runtime") != "protocol"]
+    runtime_upstream = {item["upstream_name"] for item in runtime}
+    runtime_packages = {item["package"] for item in runtime}
+    if len(runtime_upstream) != 26 or len(runtime_packages) != 26:
+        fail(
+            f"expected 26 runtime components, got {len(runtime_upstream)} names and {len(runtime_packages)} packages"
+        )
     upstream = {item["upstream_name"] for item in components.values()}
     laputa = {item["package"] for item in components.values()}
-    if len(upstream) != 26 or len(laputa) != 26:
-        fail(f"expected 26 upstream components, got {len(upstream)} names and {len(laputa)} packages")
     found = {package["name"] for package in closure(meta)}
     leaked = sorted(found & upstream)
     if leaked:
@@ -119,6 +125,7 @@ def run_tests():
     result = subprocess.run(
         ["cargo", "test", "--manifest-path", MANIFEST, "--locked"],
         env=env,
+        cwd="/",
     )
     if result.returncode != 0:
         fail("cargo test failed")

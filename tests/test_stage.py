@@ -17,15 +17,21 @@ class RegistryIsolation(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
         origin = f"http://127.0.0.1:{server.server_port}"
-        name = stage.COMPONENTS["async-task"]["package"]
+        names = (
+            stage.COMPONENTS["async-task"]["package"],
+            "h12tiny",
+            "laputa-h2-futures-lite",
+        )
         try:
             with patch.object(stage, "proxy_bytes", return_value=b"public") as proxy:
-                for path in (f"/index/{stage.index_prefix(name)}/{name}", f"/crates/{name}/0.2.0/download"):
-                    with self.assertRaises(urllib.error.HTTPError) as error:
-                        urllib.request.urlopen(origin + path)
-                    self.assertEqual(error.exception.code, 404)
-                    error.exception.close()
+                for name in names:
+                    for path in (f"/index/{stage.index_prefix(name)}/{name}", f"/crates/{name}/0.2.0/download"):
+                        with self.assertRaises(urllib.error.HTTPError) as error:
+                            urllib.request.urlopen(origin + path)
+                        self.assertEqual(error.exception.code, 404)
+                        error.exception.close()
                 proxy.assert_not_called()
+                name = names[0]
                 with urllib.request.urlopen(origin + "/index/3/f/foo") as response:
                     self.assertEqual(response.read(), b"public")
                 state.put(name, "0.2.0", b"local", '{"vers":"0.2.0"}')

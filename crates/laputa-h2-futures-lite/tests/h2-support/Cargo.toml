@@ -4,11 +4,12 @@ version = "0.1.0"
 authors = ["Carl Lerche <me@carllerche.com>"]
 publish = false
 edition = "2018"
+rust-version = "1.89"
 
 [dependencies]
-h2 = { package = "laputa-h2-futures-lite", path = "../..", features = ["stream", "unstable"] }
-laputa-protocol-test-support = { path = "../../../laputa-protocol-test-support" }
-smol = { package = "laputa-smol", version = "0.3.0" }
+h2 = { workspace = true, features = ["stream", "unstable"] }
+laputa-protocol-test-support = { package = "laputa-protocol-test-support", version = "0.1.0", path = "../../../laputa-protocol-test-support" }
+smol = { workspace = true }
 
 atty = "0.2"
 bytes = "1"
@@ -17,5 +18,5 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 tracing-tree = "0.2"
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 futures-io = "0.3"
-futures-lite = { package = "laputa-futures-lite", version = "0.3.0", default-features = false, features = ["std"] }
+futures-lite = { workspace = true, features = ["std"] }
 http = "1"

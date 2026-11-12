@@ -27,6 +27,21 @@ members = [
     "crates/smol",
     "crates/smol-macros",
     "crates/waker-fn",
+    "crates/h12tiny",
+    "crates/h12tiny-core",
+    "crates/h12tiny-client",
+    "crates/h12tiny-client-normalize",
+    "crates/h12tiny-client-sync",
+    "crates/h12tiny-server",
+    "crates/h12tiny-tls-system",
+    "crates/h12tiny-util",
+    "crates/h12tiny-web",
+    "crates/laputa-h2-futures-lite",
+    "crates/laputa-h2-futures-lite/tests/h2-support",
+    "crates/laputa-h2-futures-lite/tests/h2-tests",
+    "crates/laputa-hyper-futures-lite",
+    "crates/laputa-fastwebsockets-futures-lite",
+    "crates/laputa-protocol-test-support",
     "tests/qualify",
 ]
 
@@ -54,3 +69,40 @@ futures-lite = { package = "laputa-futures-lite", version = "0.3.0", path = "cra
 parking = { package = "laputa-parking", version = "0.3.0", path = "crates/parking" }
 piper = { package = "laputa-piper", version = "0.3.0", path = "crates/piper" }
 polling = { package = "laputa-polling", version = "0.3.0", path = "crates/polling" }
+smol = { package = "laputa-smol", version = "0.3.0", path = "crates/smol" }
+
+# h12tiny builds every TLS config with `builder_with_provider`, selecting
+# Graviola explicitly. Do not enable Rustls' `custom-provider` feature: Cargo
+# feature unification would otherwise disable another library's unambiguous
+# ring or aws-lc-rs default in the same process.
+base64 = "0.23"
+bytes = "1.12.1"
+futures-channel = "0.3.34"
+futures-core = { version = "0.3.31", default-features = false }
+futures-io = { version = "0.3.34", default-features = false }
+futures-sink = { version = "0.3", default-features = false }
+futures-rustls = { version = "0.26.0", default-features = false, features = ["tls12"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["async-await", "std"] }
+http = "1.5.0"
+http-body = "1.1.0"
+pin-project-lite = "0.2.17"
+rustc-hash = "2"
+rustls = { version = "0.23.46", default-features = false, features = ["std", "tls12"] }
+rustls-graviola = { version = "0.4.0", default-features = false }
+rustls-webpki = { version = "0.103.16", default-features = false }
+rustls-native-certs = "0.8.5"
+openssl-probe = "0.2"
+rustls-platform-verifier = "0.7.1"
+
+h12tiny-core = { version = "0.9.0", path = "crates/h12tiny-core", default-features = false }
+h12tiny-client = { version = "0.9.0", path = "crates/h12tiny-client", default-features = false }
+h12tiny-client-normalize = { version = "0.9.0", path = "crates/h12tiny-client-normalize" }
+h12tiny-client-sync = { version = "0.9.0", path = "crates/h12tiny-client-sync", default-features = false }
+h12tiny-server = { version = "0.9.0", path = "crates/h12tiny-server", default-features = false }
+h12tiny-tls-system = { version = "0.9.0", path = "crates/h12tiny-tls-system" }
+h12tiny-util = { version = "0.9.0", path = "crates/h12tiny-util", default-features = false }
+h12tiny-web = { version = "0.9.0", path = "crates/h12tiny-web", default-features = false }
+
+h2 = { package = "laputa-h2-futures-lite", version = "=0.4.20-beta.2", path = "crates/laputa-h2-futures-lite", default-features = false }
+hyper = { package = "laputa-hyper-futures-lite", version = "=1.12.0-beta.1", path = "crates/laputa-hyper-futures-lite", default-features = false }
+fastwebsockets = { package = "laputa-fastwebsockets-futures-lite", version = "0.10.2", path = "crates/laputa-fastwebsockets-futures-lite" }

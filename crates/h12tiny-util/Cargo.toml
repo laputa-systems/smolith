@@ -6,7 +6,7 @@ rust-version = "1.88"
 description = "Protocol-neutral HTTP body conveniences for h12tiny"
 license = "MIT"
 
-repository = "https://github.com/laputa-systems/h12tiny"
+repository = "https://github.com/laputa-systems/smolith"
 [features]
 default = []
 json = ["dep:deser", "dep:deser-json"]
@@ -25,4 +25,4 @@ deser-json = { version = "0.10.2", optional = true, default-features = false }
 
 [dev-dependencies]
 deser = { version = "0.10.2", default-features = false, features = ["derive"] }
-futures-lite = { workspace = true }
+futures-lite = { workspace = true, features = ["std"] }

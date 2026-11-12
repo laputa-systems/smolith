@@ -182,14 +182,19 @@ esac
             capture_output=True,
             text=True,
         )
-        subprocess.run(
-            ["git", "commit", "-m", "fixture: ignore bytecode"],
+        gitignore_diff = subprocess.run(
+            ["git", "diff", "--cached", "--quiet", "--", ".gitignore"],
             cwd=checkout,
-            check=True,
-            env=commit_env,
-            capture_output=True,
-            text=True,
         )
+        if gitignore_diff.returncode != 0:
+            subprocess.run(
+                ["git", "commit", "-m", "fixture: ignore bytecode"],
+                cwd=checkout,
+                check=True,
+                env=commit_env,
+                capture_output=True,
+                text=True,
+            )
         env = os.environ.copy()
         env.pop("PYTHONDONTWRITEBYTECODE", None)
         env.pop("PYTHONPYCACHEPREFIX", None)

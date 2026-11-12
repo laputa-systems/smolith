@@ -6,15 +6,15 @@ rust-version = "1.89"
 description = "Blocking direct-origin HTTP/1.1 client for h12tiny"
 license = "MIT"
 
-repository = "https://github.com/laputa-systems/h12tiny"
+repository = "https://github.com/laputa-systems/smolith"
 [features]
 default = []
 tls = ["dep:rustls", "dep:rustls-graviola", "dep:rustls-webpki", "dep:h12tiny-tls-system"]
 
 [dependencies]
-h12tiny-client-normalize = { version = "0.9.0", path = "../h12tiny-client-normalize" }
+h12tiny-client-normalize = { workspace = true }
 http = { workspace = true }
 rustls = { workspace = true, optional = true }
 rustls-graviola = { workspace = true, optional = true }
 rustls-webpki = { workspace = true, optional = true }
-h12tiny-tls-system = { version = "0.9.0", path = "../h12tiny-tls-system", optional = true }
+h12tiny-tls-system = { workspace = true, optional = true }

@@ -6,7 +6,7 @@ rust-version = "1.89"
 description = "Runtime-neutral HTTP server primitives for h12tiny"
 license = "MIT"
 
-repository = "https://github.com/laputa-systems/h12tiny"
+repository = "https://github.com/laputa-systems/smolith"
 [features]
 default = []
 http1 = ["hyper/server", "hyper/http1"]
@@ -21,7 +21,7 @@ futures-channel = { workspace = true }
 futures-io = { workspace = true }
 futures-rustls = { workspace = true, optional = true }
 futures-util = { workspace = true }
-h12tiny-core = { version = "0.9.0", path = "../h12tiny-core", default-features = false }
+h12tiny-core = { workspace = true }
 http = { workspace = true }
 http-body = { workspace = true }
 hyper = { workspace = true }
@@ -29,4 +29,4 @@ pin-project-lite = { workspace = true }
 rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
-futures-lite = { workspace = true }
+futures-lite = { workspace = true, features = ["std"] }

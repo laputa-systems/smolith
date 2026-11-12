@@ -6,7 +6,7 @@ rust-version = "1.89"
 description = "Direct-origin HTTP client for h12tiny"
 license = "MIT"
 
-repository = "https://github.com/laputa-systems/h12tiny"
+repository = "https://github.com/laputa-systems/smolith"
 
 [features]
 default = []
@@ -21,17 +21,17 @@ futures-channel = { workspace = true }
 futures-io = { workspace = true }
 futures-rustls = { workspace = true, optional = true }
 futures-util = { workspace = true }
-h12tiny-core = { version = "0.9.0", path = "../h12tiny-core", default-features = false }
-h12tiny-client-normalize = { version = "0.9.0", path = "../h12tiny-client-normalize" }
+h12tiny-core = { workspace = true }
+h12tiny-client-normalize = { workspace = true }
 http = { workspace = true }
 http-body = { workspace = true }
 hyper = { workspace = true }
 rustls = { workspace = true, optional = true }
 rustls-graviola = { workspace = true, optional = true }
 rustls-webpki = { workspace = true, optional = true }
-h12tiny-tls-system = { version = "0.9.0", path = "../h12tiny-tls-system", optional = true }
+h12tiny-tls-system = { workspace = true, optional = true }
 
 [dev-dependencies]
 async-io = { workspace = true }
-futures-lite = { workspace = true }
-smol = { package = "laputa-smol", version = "0.3.0" }
+futures-lite = { workspace = true, features = ["std"] }
+smol = { workspace = true }
