@@ -13,10 +13,14 @@ use core::cell::RefCell;
 #[cfg(all(feature = "std", not(feature = "critical-section")))]
 use core::ops::{Deref, DerefMut};
 
+use alloc::vec::Vec;
+
 use core::marker::PhantomPinned;
 use core::mem;
 use core::pin::Pin;
 use core::ptr::NonNull;
+
+use crate::Task;
 
 pub(super) struct List<T>(
     /// libstd-based implementation uses a normal Mutex to secure the data.
@@ -217,13 +221,25 @@ impl<T> crate::Inner<T> {
         listener: Pin<&mut Option<Listener<T>>>,
         propagate: bool,
     ) -> Option<State<T>> {
-        self.with_inner(|inner| inner.remove(listener, propagate))
+        let (state, tasks) = self.with_inner(|inner| {
+            let mut tasks = Vec::new();
+            let state = inner.remove(listener, propagate, &mut tasks);
+            (state, tasks)
+        });
+        wake_tasks(tasks);
+        state
     }
 
     /// Notifies a number of entries.
     #[cold]
     pub(crate) fn notify(&self, notify: impl Notification<Tag = T>) -> usize {
-        self.with_inner(|inner| inner.notify(notify))
+        let (count, tasks) = self.with_inner(|inner| {
+            let mut tasks = Vec::new();
+            let count = inner.notify(notify, &mut tasks);
+            (count, tasks)
+        });
+        wake_tasks(tasks);
+        count
     }
 
     /// Register a task to be notified when the event is triggered.
@@ -235,31 +251,33 @@ impl<T> crate::Inner<T> {
         mut listener: Pin<&mut Option<Listener<T>>>,
         task: TaskRef<'_>,
     ) -> RegisterResult<T> {
-        self.with_inner(|inner| {
+        let (result, retired) = self.with_inner(|inner| {
             let entry_guard = match listener.as_mut().as_pin_mut() {
                 Some(listener) => listener.link.get(),
-                None => return RegisterResult::NeverInserted,
+                None => return (RegisterResult::NeverInserted, None),
             };
             // SAFETY: We are locked, so we can access the inner `link`.
             let entry = unsafe { entry_guard.deref() };
 
             // Take out the state and check it.
-            match entry.state.replace(State::NotifiedTaken) {
+            let mut retired = None;
+            let result = match entry.state.replace(State::NotifiedTaken) {
                 State::Notified { tag, .. } => {
                     // We have been notified, remove the listener.
-                    inner.remove(listener, false);
+                    let mut tasks = Vec::new();
+                    inner.remove(listener, false, &mut tasks);
+                    debug_assert!(tasks.is_empty());
                     RegisterResult::Notified(tag)
                 }
 
                 State::Task(other_task) => {
                     // Only replace the task if it's different.
-                    entry.state.set(State::Task({
-                        if !task.will_wake(other_task.as_task_ref()) {
-                            task.into_task()
-                        } else {
-                            other_task
-                        }
-                    }));
+                    if !task.will_wake(other_task.as_task_ref()) {
+                        entry.state.set(State::Task(task.into_task()));
+                        retired = Some(other_task);
+                    } else {
+                        entry.state.set(State::Task(other_task));
+                    }
 
                     RegisterResult::Registered
                 }
@@ -269,8 +287,11 @@ impl<T> crate::Inner<T> {
                     entry.state.set(State::Task(task.into_task()));
                     RegisterResult::Registered
                 }
-            }
-        })
+            };
+            (result, retired)
+        });
+        drop(retired);
+        result
     }
 }
 
@@ -279,6 +300,7 @@ impl<T> Inner<T> {
         &mut self,
         mut listener: Pin<&mut Option<Listener<T>>>,
         propagate: bool,
+        wake: &mut Vec<Task>,
     ) -> Option<State<T>> {
         let entry_guard = listener.as_mut().as_pin_mut()?.link.get();
         let entry = unsafe { entry_guard.deref() };
@@ -334,7 +356,7 @@ impl<T> Inner<T> {
                         let mut tag = Some(tag);
                         move || tag.take().expect("tag already taken")
                     };
-                    self.notify(GenericNotify::new(1, additional, tags));
+                    self.notify(GenericNotify::new(1, additional, tags), wake);
                 }
             }
         }
@@ -344,7 +366,7 @@ impl<T> Inner<T> {
     }
 
     #[cold]
-    fn notify(&mut self, mut notify: impl Notification<Tag = T>) -> usize {
+    fn notify(&mut self, mut notify: impl Notification<Tag = T>, wake: &mut Vec<Task>) -> usize {
         let mut n = notify.count(Internal::new());
         let is_additional = notify.is_additional(Internal::new());
 
@@ -374,7 +396,7 @@ impl<T> Inner<T> {
                         additional: is_additional,
                         tag,
                     }) {
-                        task.wake();
+                        wake.push(task);
                     }
 
                     // Bump the notified count.
@@ -384,6 +406,12 @@ impl<T> Inner<T> {
         }
 
         original_count - n
+    }
+}
+
+fn wake_tasks(tasks: Vec<Task>) {
+    for task in tasks {
+        task.wake();
     }
 }
 

@@ -492,6 +492,7 @@ impl Source {
     ///
     /// If a different waker is already registered, it gets replaced and woken.
     fn poll_ready(&self, dir: usize, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let incoming = cx.waker().clone();
         let mut displaced = None;
         let result = {
             let mut state = self.state.lock().unwrap();
@@ -508,13 +509,13 @@ impl Source {
 
             // Register the current task's waker.
             if let Some(w) = state[dir].waker.take() {
-                if w.will_wake(cx.waker()) {
+                if w.will_wake(&incoming) {
                     state[dir].waker = Some(w);
                     return Poll::Pending;
                 }
                 displaced = Some(w);
             }
-            state[dir].waker = Some(cx.waker().clone());
+            state[dir].waker = Some(incoming);
             state[dir].ticks = Some((state[dir].tick, state[dir].tick));
 
             // Update interest in this I/O handle.
@@ -682,60 +683,76 @@ impl<H: Borrow<crate::Async<T>> + Clone, T> Future for Ready<H, T> {
             ..
         } = &mut *self;
 
-        let mut state = handle.borrow().source.state.lock().unwrap();
+        let incoming = cx.waker().clone();
+        let (retired, result) = {
+            let mut state = handle.borrow().source.state.lock().unwrap();
 
-        // Check if the reactor has delivered an event.
-        if let Some((a, b)) = *ticks {
-            if state[*dir].tick != a && state[*dir].tick != b {
-                return Poll::Ready(Ok(()));
+            // Check if the reactor has delivered an event.
+            if let Some((a, b)) = *ticks {
+                if state[*dir].tick != a && state[*dir].tick != b {
+                    return Poll::Ready(Ok(()));
+                }
             }
-        }
 
-        let was_empty = state[*dir].is_empty();
+            let was_empty = state[*dir].is_empty();
 
-        // Register the current task's waker.
-        let i = match *index {
-            Some(i) => i,
-            None => {
-                let i = state[*dir].wakers.insert(None);
-                *index = Some(i);
-                *ticks = Some((state[*dir].tick, state[*dir].tick));
-                i
-            }
-        };
-        state[*dir].wakers[i] = Some(cx.waker().clone());
-
-        // Update interest in this I/O handle.
-        if was_empty {
-            // Create the event that we are interested in.
-            let event = {
-                let mut event = Event::none(handle.borrow().source.key);
-                event.readable = !state[READ].is_empty();
-                event.writable = !state[WRITE].is_empty();
-                event
+            // Register the current task's waker.
+            let i = match *index {
+                Some(i) => i,
+                None => {
+                    let i = state[*dir].wakers.insert(None);
+                    *index = Some(i);
+                    *ticks = Some((state[*dir].tick, state[*dir].tick));
+                    i
+                }
             };
+            let retired = state[*dir].wakers[i].replace(incoming);
 
-            // Indicate that we are interested in this event.
-            handle
-                .borrow()
-                .source
-                .registration
-                .modify(&Reactor::get().poller, event)?;
-        }
+            // Update interest in this I/O handle.
+            let result = if was_empty {
+                // Create the event that we are interested in.
+                let event = {
+                    let mut event = Event::none(handle.borrow().source.key);
+                    event.readable = !state[READ].is_empty();
+                    event.writable = !state[WRITE].is_empty();
+                    event
+                };
 
-        Poll::Pending
+                // Indicate that we are interested in this event.
+                if let Err(err) = handle
+                    .borrow()
+                    .source
+                    .registration
+                    .modify(&Reactor::get().poller, event)
+                {
+                    Poll::Ready(Err(err))
+                } else {
+                    Poll::Pending
+                }
+            } else {
+                Poll::Pending
+            };
+            (retired, result)
+        };
+        drop(retired);
+        result
     }
 }
 
 impl<H: Borrow<crate::Async<T>>, T> Drop for Ready<H, T> {
     fn drop(&mut self) {
         // Remove our waker when dropped.
-        if let Some(key) = self.index {
+        let retired = if let Some(key) = self.index {
             let mut state = self.handle.borrow().source.state.lock().unwrap();
             let wakers = &mut state[self.dir].wakers;
             if wakers.contains(key) {
-                wakers.remove(key);
+                Some(wakers.remove(key))
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
+        drop(retired);
     }
 }

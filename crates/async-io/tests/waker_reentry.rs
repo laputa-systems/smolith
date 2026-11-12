@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::net::{Ipv4Addr, UdpSocket};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,6 +45,44 @@ struct Idle;
 
 impl Wake for Idle {
     fn wake(self: Arc<Self>) {}
+}
+
+struct PollWriteOnDrop {
+    socket: Arc<Async<UdpSocket>>,
+    polled: Arc<AtomicBool>,
+}
+
+impl Wake for PollWriteOnDrop {
+    fn wake(self: Arc<Self>) {}
+}
+
+impl Drop for PollWriteOnDrop {
+    fn drop(&mut self) {
+        let waker = Waker::from(Arc::new(Idle));
+        let mut cx = Context::from_waker(&waker);
+        let _ = self.socket.poll_writable(&mut cx);
+        self.polled.store(true, Ordering::Release);
+    }
+}
+
+#[test]
+fn dropped_readable_waker_polls_write_readiness() {
+    finish_within(|| {
+        let socket = Arc::new(
+            Async::<UdpSocket>::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind a local udp socket"),
+        );
+        let polled = Arc::new(AtomicBool::new(false));
+        let waker = Waker::from(Arc::new(PollWriteOnDrop {
+            socket: Arc::clone(&socket),
+            polled: Arc::clone(&polled),
+        }));
+        let mut readable = Box::pin(socket.readable());
+        let mut cx = Context::from_waker(&waker);
+        assert!(readable.as_mut().poll(&mut cx).is_pending());
+        drop(waker);
+        drop(readable);
+        assert!(polled.load(Ordering::Acquire));
+    });
 }
 
 #[test]

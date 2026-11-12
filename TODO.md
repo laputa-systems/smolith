@@ -10,15 +10,6 @@ Next: 14
 - **Fix with:** `stuff-registries`
 - **Effort:** S
 
-### SMOL-6 · P2 · Waker callbacks run while internal locks are held
-
-- **Area:** Concurrency
-- **Where:** `crates/event-listener/src/intrusive.rs:137`, `crates/event-listener/src/intrusive.rs:225`, `crates/event-listener/src/intrusive.rs:347`, `crates/async-executor/src/lib.rs:891`, `crates/async-executor/src/lib.rs:906`, `crates/async-executor/src/lib.rs:1038`, `crates/async-io/src/reactor.rs:685`, `crates/async-io/src/reactor.rs:730`, `crates/async-broadcast/src/lib.rs:728`
-- **Problem:** Safe user wakers can reenter the library while it holds a non-reentrant mutex. Three real-crate probes deadlock: poll an Event listener with a waker that calls `event.listen()`, then notify it; drop a pending `Executor::tick()` whose final waker destructor spawns on that executor; or drop a registered `Async<UdpSocket>::readable()` future whose final waker destructor calls `poll_writable()` on that socket. Each probe reaches its callback and cannot return. Event/executor controls that remove only callback reentry complete. Waker replacement also destroys old wakers under these locks. The broadcast channel additionally holds its outer channel mutex while notifying listeners.
-- **Recommendation:** Complete state changes while locked, extract callbacks and retired wakers, then invoke or destroy them after releasing every relevant lock. Account for clone, replacement, wake, and final drop, including callers' outer locks. Preserve notification propagation and executor publication accounting. Add safe reentrant-waker regressions for event notification, ticker cancellation, and readiness replacement/cancellation.
-- **Fix with:** `lifecycle-concurrency`
-- **Effort:** M
-
 ### SMOL-10 · P2 · Broadcast admission changes leave pending senders asleep
 
 - **Area:** Concurrency

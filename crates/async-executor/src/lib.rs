@@ -875,45 +875,43 @@ struct Sleepers {
 
 impl Sleepers {
     /// Inserts a new sleeping ticker.
-    fn insert(&mut self, waker: &Waker) -> usize {
+    fn insert(&mut self, waker: Waker) -> usize {
         let id = match self.free_ids.pop() {
             Some(id) => id,
             None => self.count + 1,
         };
         self.count += 1;
-        self.wakers.push((id, waker.clone()));
+        self.wakers.push((id, waker));
         id
     }
 
     /// Re-inserts a sleeping ticker's waker if it was notified.
     ///
-    /// Returns `true` if the ticker was notified.
-    fn update(&mut self, id: usize, waker: &Waker) -> bool {
+    /// Returns whether the ticker was notified, and the waker this call displaced.
+    fn update(&mut self, id: usize, waker: Waker) -> (bool, Option<Waker>) {
         for item in &mut self.wakers {
             if item.0 == id {
-                item.1.clone_from(waker);
-                return false;
+                return (false, Some(core::mem::replace(&mut item.1, waker)));
             }
         }
 
-        self.wakers.push((id, waker.clone()));
-        true
+        self.wakers.push((id, waker));
+        (true, None)
     }
 
     /// Removes a previously inserted sleeping ticker.
     ///
-    /// Returns `true` if the ticker was notified.
-    fn remove(&mut self, id: usize) -> bool {
+    /// Returns whether the ticker was notified, and its waker when it was still asleep.
+    fn remove(&mut self, id: usize) -> (bool, Option<Waker>) {
         self.count -= 1;
         self.free_ids.push(id);
 
         for i in (0..self.wakers.len()).rev() {
             if self.wakers[i].0 == id {
-                self.wakers.remove(i);
-                return false;
+                return (false, Some(self.wakers.remove(i).1));
             }
         }
-        true
+        (true, None)
     }
 
     /// Returns `true` if a sleeping ticker is notified or no tickers are sleeping.
@@ -957,46 +955,53 @@ impl<'a> Ticker<'a> {
     ///
     /// Returns `false` if the ticker was already sleeping and unnotified.
     fn sleep(&mut self, waker: &Waker) -> bool {
-        let mut sleepers = self
-            .state
-            .sleepers
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-
-        match self.sleeping {
-            // Move to sleeping state.
-            0 => {
-                self.sleeping = sleepers.insert(waker);
-            }
-
-            // Already sleeping, check if notified.
-            id => {
-                if !sleepers.update(id, waker) {
-                    return false;
-                }
-            }
-        }
-
-        self.state
-            .notified
-            .store(sleepers.is_notified(), Ordering::Release);
-
-        true
-    }
-
-    /// Moves the ticker into woken state.
-    fn wake(&mut self) {
-        if self.sleeping != 0 {
+        let waker = waker.clone();
+        let mut retired = None;
+        let parked = {
             let mut sleepers = self
                 .state
                 .sleepers
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            sleepers.remove(self.sleeping);
 
-            self.state
-                .notified
-                .store(sleepers.is_notified(), Ordering::Release);
+            let already_asleep = match self.sleeping {
+                0 => {
+                    self.sleeping = sleepers.insert(waker);
+                    false
+                }
+                id => {
+                    let (notified, old) = sleepers.update(id, waker);
+                    retired = old;
+                    !notified
+                }
+            };
+            if !already_asleep {
+                self.state
+                    .notified
+                    .store(sleepers.is_notified(), Ordering::Release);
+            }
+            !already_asleep
+        };
+        drop(retired);
+        parked
+    }
+
+    /// Moves the ticker into woken state.
+    fn wake(&mut self) {
+        if self.sleeping != 0 {
+            let retired = {
+                let mut sleepers = self
+                    .state
+                    .sleepers
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                let (_notified, retired) = sleepers.remove(self.sleeping);
+                self.state
+                    .notified
+                    .store(sleepers.is_notified(), Ordering::Release);
+                retired
+            };
+            drop(retired);
         }
         self.sleeping = 0;
     }
@@ -1039,20 +1044,23 @@ impl Drop for Ticker<'_> {
     fn drop(&mut self) {
         // If this ticker is in sleeping state, it must be removed from the sleepers list.
         if self.sleeping != 0 {
-            let mut sleepers = self
-                .state
-                .sleepers
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            let notified = sleepers.remove(self.sleeping);
+            let (notified, retired) = {
+                let mut sleepers = self
+                    .state
+                    .sleepers
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                let (notified, retired) = sleepers.remove(self.sleeping);
 
-            self.state
-                .notified
-                .store(sleepers.is_notified(), Ordering::Release);
+                self.state
+                    .notified
+                    .store(sleepers.is_notified(), Ordering::Release);
+                (notified, retired)
+            };
+            drop(retired);
 
             // If this ticker was notified, then notify another ticker.
             if notified {
-                drop(sleepers);
                 self.state.notify();
             }
         }
