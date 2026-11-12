@@ -1,22 +1,16 @@
 #!/usr/bin/env sh
-# Bump the laputa workspace to its next minor version and publish the
-# workspace crates in dependency order.
+# Publish every publishable workspace package.
 #
-# The workspace keeps one version in the root Cargo.toml
-# ([workspace.package].version). Every laputa-* crate inherits it, every
-# [workspace.dependencies] entry for a laputa-* crate carries it, every
-# [components.*] entry in UPSTREAM.toml carries it, and the smol path
-# requirements in tests/qualify and tests/consumer track it.
-# The release moves to minor(max(local, registry)) + 1 with the patch reset.
-# A registry that ran ahead is honored as the base; a local version ahead
-# of the registry without a matching release commit fails instead of
-# guessing. Inter-crate requirements track the new version; anything
-# unexpected fails loudly before anything is edited.
-# One commit carries the release and each crate gets a <name>-v<version> tag.
-# Re-running after a partial publish finishes the remaining crates instead
-# of failing. A crates.io 429 throttle waits for the server's retry time and
-# resumes instead of aborting. A missing registry login fails before any
-# registry query or file edit.
+# Runtime crates share one minor bump. HTTP crates share a separate minor
+# bump. Protocol forks stay on the version already declared in the tree.
+# Public uploads go to crates.io. The private phase then runs
+# `stuff publish cargo` (REGISTRY defaults to mycrates, STUFF selects the
+# executable). Downloads still follow the committed source replacement;
+# that mirror is not an upload destination.
+#
+# `make publish-dry-run` rewrites versions only in a temporary clone.
+# A matching release commit resumes the same versions instead of bumping
+# again. A newer registry version does not count as the intended version.
 
 set -eu
 LC_ALL=C
@@ -31,58 +25,46 @@ SCRIPT_DIR=$(CDPATH= cd -P "$(dirname "$0")" && pwd -P) || fail "cannot locate s
 ROOT=$(CDPATH= cd -P "$SCRIPT_DIR/.." && pwd -P) || fail "cannot locate repository root"
 cd "$ROOT"
 
-for command_name in awk cargo cp dirname git grep mkdir mv python3 rm sed sleep sort; do
+for command_name in awk cargo cp dirname git grep mkdir mktemp mv python3 rm rustup sed sleep sort; do
     command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
 
+REGISTRY=${REGISTRY:-mycrates}
+STUFF=${STUFF:-stuff}
+
+TOOLCHAIN=$(rustup show active-toolchain | awk 'NR==1 { print $1 }') || fail "could not read the pinned toolchain"
+[ -n "$TOOLCHAIN" ] || fail "could not read the pinned toolchain"
+
+if [ -z "${TMPDIR:-}" ]; then
+    mkdir -p "$ROOT/.work/tmp" || fail "could not create scratch directory"
+    TMPDIR=$ROOT/.work/tmp
+    export TMPDIR
+fi
+
 temporary_manifest=
 backup_dir=
+dry_clone_dir=
+packages_file=
 release_started=0
 release_committed=0
 release_subject="chore(release): bump laputa workspace minor version"
+runtime_latest=
+http_latest=
+runtime_next=
+http_next=
+http_current=
 newline=$(printf '\nX')
 newline=${newline%X}
-
-RESET_PATHS="Cargo.toml Cargo.lock UPSTREAM.toml tests/qualify/Cargo.toml tests/consumer/Cargo.toml tests/consumer/Cargo.lock"
 
 on_exit() {
     exit_status=$1
     trap - 0 HUP INT TERM
 
     if [ "$release_started" -eq 1 ] && [ "$release_committed" -eq 0 ]; then
-        if head_subject=$(git log -1 --format=%s 2>/dev/null); then
-            :
-        else
-            head_subject=
-        fi
+        head_subject=$(git log -1 --format=%s 2>/dev/null || true)
         if [ "$head_subject" != "$release_subject" ]; then
-            # RESET_PATHS contains no whitespace.
-            # shellcheck disable=SC2086
-            if ! git reset -- $RESET_PATHS; then
-                printf '%s\n' "make publish: failed to unstage release inputs; backups remain in $backup_dir" >&2
-                exit 1
-            fi
-            restore_failed=0
-            if ! cp -p "$backup_dir/Cargo.toml" "$ROOT/Cargo.toml"; then
-                restore_failed=1
-            fi
-            if ! cp -p "$backup_dir/Cargo.lock" "$ROOT/Cargo.lock"; then
-                restore_failed=1
-            fi
-            if ! cp -p "$backup_dir/UPSTREAM.toml" "$ROOT/UPSTREAM.toml"; then
-                restore_failed=1
-            fi
-            if ! cp -p "$backup_dir/qualify.toml" "$ROOT/tests/qualify/Cargo.toml"; then
-                restore_failed=1
-            fi
-            if ! cp -p "$backup_dir/consumer.toml" "$ROOT/tests/consumer/Cargo.toml"; then
-                restore_failed=1
-            fi
-            if ! cp -p "$backup_dir/consumer.lock" "$ROOT/tests/consumer/Cargo.lock"; then
-                restore_failed=1
-            fi
-            if [ "$restore_failed" -ne 0 ]; then
-                printf '%s\n' "make publish: failed to restore release inputs; backups remain in $backup_dir" >&2
+            if ! git checkout -- .; then
+                printf '%s\n' "make publish: failed to restore the working tree; backups remain in $backup_dir" >&2
                 exit 1
             fi
         fi
@@ -94,6 +76,12 @@ on_exit() {
     if [ -n "$backup_dir" ]; then
         rm -rf "$backup_dir" || exit_status=1
     fi
+    if [ -n "$dry_clone_dir" ]; then
+        rm -rf "$dry_clone_dir" || exit_status=1
+    fi
+    if [ -n "$packages_file" ]; then
+        rm -f "$packages_file" || exit_status=1
+    fi
     exit "$exit_status"
 }
 
@@ -101,16 +89,12 @@ trap 'on_exit $?' 0
 trap 'exit 1' HUP INT TERM
 
 is_rate_limited() {
-    # Detects a crates.io throttle in captured cargo output.
+    # crates.io embeds the throttle in the cargo error text.
     printf '%s' "$1" | grep -qi -e 'status 429' -e 'too many requests' -e 'try again after'
 }
 
 rate_limit_wait_secs() {
-    # Prints how long to wait for the throttle described in $1. Parses the
-    # "try again after <date>" deadline crates.io embeds in the 429 body and
-    # waits until then plus a buffer. Falls back to the documented refill
-    # rate (10 minutes for new crates, 1 minute for new versions) when the
-    # deadline does not parse.
+    # "try again after <date>" is the deadline crates.io puts in a 429 body.
     printf '%s' "$1" | python3 -c '
 import re
 import sys
@@ -139,10 +123,7 @@ except Exception:
 }
 
 is_transient_publish_failure() {
-    # Detects failures worth retrying briefly: the sparse index has not
-    # caught up with a dependency published seconds ago, or the registry
-    # answered with a short-lived 5xx or network hiccup. Anything else fails
-    # fast so real validation errors stay loud.
+    # The sparse index can lag a dependency published seconds earlier.
     printf '%s' "$1" | grep -qi -e 'no matching package' -e 'failed to select a version' -e 'unknown crate' -e 'spurious network' -e 'connection reset' -e 'timed out' -e 'status 5[0-9][0-9]' -e 'failed to get'
 }
 
@@ -155,16 +136,16 @@ cargo_public() {
     cargo "$@" --registry "$PUBLIC_REGISTRY"
 }
 
+from_root() {
+    (cd / && RUSTUP_TOOLCHAIN="$TOOLCHAIN" "$@")
+}
+
 registry_latest() {
     # Prints the latest registry version of $1, or nothing when the crate
-    # has never been published. A failed query still fails loudly, but a
-    # 429 throttle waits for the server's retry time and tries again instead
-    # of aborting a long release.
-    # Standard error is captured so cargo's informational notes stay out of
-    # release output; it is reported when the query itself fails.
+    # has never been published. A 429 waits for the server retry time.
     attempt=1
     while true; do
-        if search_result=$(cargo_public search "$1" --limit 1 2>&1); then
+        if search_result=$(from_root cargo_public search "$1" --limit 1 2>&1); then
             break
         fi
         if is_rate_limited "$search_result"; then
@@ -189,94 +170,27 @@ registry_latest() {
     ' || fail "could not parse the registry response for $1"
 }
 
-version_at_least() {
-    awk -v left="$1" -v right="$2" '
-        function components(value, result) {
-            sub(/[+].*$/, "", value)
-            sub(/-.*/, "", value)
-            return split(value, result, "[.]")
-        }
-        function compare_component(left_part, right_part) {
-            if (length(left_part) < length(right_part)) return -1
-            if (length(left_part) > length(right_part)) return 1
-            if (("x" left_part) < ("x" right_part)) return -1
-            if (("x" left_part) > ("x" right_part)) return 1
-            return 0
-        }
-        BEGIN {
-            components(left, left_parts)
-            components(right, right_parts)
-            for (part = 1; part <= 3; part++) {
-                comparison = compare_component(left_parts[part], right_parts[part])
-                if (comparison != 0) exit (comparison > 0 ? 0 : 1)
-            }
-            exit 0
-        }
-    '
+exact_published() {
+    from_root cargo_public info "$1@$2" >/dev/null 2>&1
 }
 
-plan_next() {
-    awk -v current="$1" -v latest="$2" '
-        function valid_version(value) {
-            return value ~ /^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$/
-        }
-        function components(value, result) {
-            sub(/[+].*$/, "", value)
-            sub(/-.*/, "", value)
-            return split(value, result, "[.]")
-        }
-        function compare_component(left, right) {
-            if (length(left) < length(right)) return -1
-            if (length(left) > length(right)) return 1
-            if (("x" left) < ("x" right)) return -1
-            if (("x" left) > ("x" right)) return 1
+wait_for_exact() {
+    attempt=1
+    while [ "$attempt" -le 20 ]; do
+        if exact_published "$1" "$2"; then
             return 0
-        }
-        function compare_versions(left, right, left_parts, right_parts, part, comparison) {
-            components(left, left_parts)
-            components(right, right_parts)
-            for (part = 1; part <= 3; part++) {
-                comparison = compare_component(left_parts[part], right_parts[part])
-                if (comparison != 0) return comparison
-            }
-            return 0
-        }
-        function increment_decimal(value, result, carry, position, digit, next_digit) {
-            result = ""
-            carry = 1
-            for (position = length(value); position > 0; position--) {
-                digit = substr(value, position, 1)
-                next_digit = index("0123456789", digit) - 1 + carry
-                if (next_digit == 10) {
-                    next_digit = 0
-                    carry = 1
-                } else {
-                    carry = 0
-                }
-                result = substr("0123456789", next_digit + 1, 1) result
-            }
-            if (carry) result = "1" result
-            return result
-        }
-        BEGIN {
-            if (!valid_version(current)) exit 1
-            base = current
-            if (latest != "") {
-                if (!valid_version(latest)) exit 1
-                if (compare_versions(current, latest) < 0) base = latest
-            }
-            components(base, base_parts)
-            print base_parts[1] "." increment_decimal(base_parts[2]) ".0"
-        }
-    '
+        fi
+        printf '%s\n' "waiting for $1 $2 on crates.io (attempt $attempt)" >&2
+        sleep 30
+        attempt=$((attempt + 1))
+    done
+    fail "$1 $2 did not become visible on crates.io"
 }
 
 dry_run_package() {
-    # Dry-runs $1, waiting through throttles and briefly retrying index lag
-    # so a dependency published seconds ago has time to appear.
     attempt=1
     while true; do
-        if dry_output=$(cargo_public publish -p "$1" --dry-run --allow-dirty 2>&1); then
+        if dry_output=$(from_root cargo_public publish -p "$1" --manifest-path "$ROOT/Cargo.toml" --dry-run 2>&1); then
             printf '%s\n' "$dry_output"
             return 0
         fi
@@ -301,12 +215,7 @@ dry_run_package() {
 }
 
 publish_package() {
-    # Publishes $1 at $2 unless the registry already has it, so a re-run
-    # after a partial publish finishes the remaining crates. A 429 throttle
-    # waits for the server's retry time and tries again for as long as it
-    # takes instead of aborting the release.
-    already_published=$(registry_latest "$1") || exit 1
-    if [ -n "$already_published" ] && version_at_least "$already_published" "$2"; then
+    if exact_published "$1" "$2"; then
         printf '%s\n' "$1 $2 is already published; skipping"
         return 0
     fi
@@ -314,15 +223,18 @@ publish_package() {
     attempt=1
     transient_attempt=1
     while true; do
-        if publish_output=$(cargo_public publish -p "$1" 2>&1); then
+        if publish_output=$(from_root cargo_public publish -p "$1" --manifest-path "$ROOT/Cargo.toml" 2>&1); then
             printf '%s\n' "$publish_output"
+            printf '%s\n' "published $1 $2 crates-io"
+            wait_for_exact "$1" "$2"
             return 0
         fi
         case "$publish_output" in
             *'already exists'*|*'already uploaded'*|*'already on crates.io'*)
-                printf '%s\n' "$1 $2 is already published; skipping"
-                printf '%s\n' "$publish_output"
-                return 0
+                if exact_published "$1" "$2"; then
+                    printf '%s\n' "$1 $2 is already published; skipping"
+                    return 0
+                fi
                 ;;
         esac
         if is_rate_limited "$publish_output"; then
@@ -332,11 +244,6 @@ publish_package() {
             printf '%s\n' "$publish_output" | grep -i -e '429' -e 'try again after' | sed -n '1,5p'
             sleep "$wait_secs"
             attempt=$((attempt + 1))
-            already_published=$(registry_latest "$1") || exit 1
-            if [ -n "$already_published" ] && version_at_least "$already_published" "$2"; then
-                printf '%s\n' "$1 $2 is already published; skipping"
-                return 0
-            fi
             continue
         fi
         if [ "$transient_attempt" -lt 20 ] && is_transient_publish_failure "$publish_output"; then
@@ -344,11 +251,6 @@ publish_package() {
             printf '%s\n' "$publish_output" | sed -n '1,10p'
             sleep 30
             transient_attempt=$((transient_attempt + 1))
-            already_published=$(registry_latest "$1") || exit 1
-            if [ -n "$already_published" ] && version_at_least "$already_published" "$2"; then
-                printf '%s\n' "$1 $2 is already published; skipping"
-                return 0
-            fi
             continue
         fi
         printf '%s\n' "$publish_output" >&2
@@ -356,12 +258,40 @@ publish_package() {
     done
 }
 
+publish_one_private() {
+    attempt=1
+    while true; do
+        if private_output=$(from_root "$STUFF" publish cargo -p "$1" --manifest-path "$ROOT/Cargo.toml" --registry "$REGISTRY" 2>&1); then
+            printf '%s\n' "$private_output"
+            printf '%s\n' "published $1 $2 $REGISTRY"
+            return 0
+        else
+            status=$?
+        fi
+        if [ "$status" -eq 3 ] || [ "$status" -eq 5 ]; then
+            if [ "$attempt" -ge 5 ]; then
+                printf '%s\n' "$private_output" >&2
+                fail "could not publish $1 $2 to $REGISTRY"
+            fi
+            printf '%s\n' "retrying private publish of $1 $2 (attempt $attempt, status $status)" >&2
+            sleep 30
+            attempt=$((attempt + 1))
+            continue
+        fi
+        printf '%s\n' "$private_output" >&2
+        fail "could not publish $1 $2 to $REGISTRY"
+    done
+}
+
 ensure_tag() {
     tag=$1-v$2
-    case "$newline$tags_at_head$newline" in
-        *"$newline$tag$newline"*) ;;
-        *) git tag -a "$tag" -m "$1 $2" ;;
-    esac
+    if git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
+        target=$(git rev-list -n 1 "$tag") || fail "could not read tag $tag"
+        head_now=$(git rev-parse HEAD) || fail "could not read HEAD"
+        [ "$target" = "$head_now" ] || fail "tag $tag already exists away from the release commit"
+        return 0
+    fi
+    git tag -a "$tag" -m "$1 $2" || fail "could not create tag $tag"
 }
 
 ensure_clean_tree() {
@@ -370,10 +300,6 @@ ensure_clean_tree() {
 }
 
 ensure_registry_auth() {
-    # Preflight before any registry query or file edit: a missing login
-    # otherwise surfaces only at the first authenticated step, after several
-    # registry queries. Ownership of each published crate is still validated
-    # by the cargo owner loop below before anything is edited.
     if [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || [ -n "${CARGO_REGISTRIES_CRATES_IO_TOKEN:-}" ]; then
         return 0
     fi
@@ -394,322 +320,236 @@ ensure_registry_auth() {
     fail "no Cargo registry token found; run \`cargo login\` (or set CARGO_REGISTRY_TOKEN) before publishing"
 }
 
-# Fail fast without a registry login before any registry query or file edit.
-ensure_registry_auth
+set_planned() {
+    family=$1
+    version=$2
+    case "$family" in
+        runtime)
+            if [ -n "$runtime_next" ]; then
+                planned=$runtime_next
+            else
+                planned=$version
+            fi
+            ;;
+        http)
+            if [ -n "$http_next" ]; then
+                planned=$http_next
+            else
+                planned=$version
+            fi
+            ;;
+        protocol)
+            planned=$version
+            ;;
+        *)
+            fail "unknown release family $family"
+            ;;
+    esac
+}
 
-# Derive the member manifests from the workspace so new crates are picked
-# up without editing this script. Members with publish = false stay in the
-# workspace but leave the release: they are never queried, tagged, or
-# published.
-LOCAL_VERSION=$(python3 tools/release_graph.py version) || fail "could not read release version"
-MANIFEST_MAP=$(python3 tools/release_graph.py manifests) || fail "could not read release manifests"
-PKG_SPACE=$(printf '%s\n' "$MANIFEST_MAP" | awk -F: '{ print $1 }' | tr '\n' ' ')
-[ -n "$PKG_SPACE" ] || fail "workspace has no publishable members"
-EDGES=$(python3 tools/release_graph.py edges) || fail "could not read release dependencies"
+note_latest() {
+    family=$1
+    latest=$2
+    [ -n "$latest" ] || return 0
+    case "$family" in
+        runtime) current_max=$runtime_latest ;;
+        http) current_max=$http_latest ;;
+        *) return 0 ;;
+    esac
+    if [ -z "$current_max" ]; then
+        current_max=$latest
+    elif python3 tools/inventory.py at-least "$latest" "$current_max"; then
+        if ! python3 tools/inventory.py at-least "$current_max" "$latest"; then
+            current_max=$latest
+        fi
+    fi
+    case "$family" in
+        runtime) runtime_latest=$current_max ;;
+        http) http_latest=$current_max ;;
+    esac
+}
 
-# Order crates dependencies-first. Emitted in sorted order among ready
-# crates so the sequence is stable.
-TOPO_ORDER=$(printf '%s\n' "$EDGES" | awk -v nodes="$PKG_SPACE" '
-    BEGIN {
-        count = split(nodes, list, " ")
-        for (i = 1; i <= count; i++) {
-            node = list[i]
-            ranked[i] = node
-            depcount[node] = 0
-            dependents[node] = ""
-        }
-        for (i = 1; i <= count; i++)
-            for (j = i + 1; j <= count; j++)
-                if (ranked[j] < ranked[i]) {
-                    tmp = ranked[i]
-                    ranked[i] = ranked[j]
-                    ranked[j] = tmp
-                }
-    }
-    NF == 2 {
-        dependent = $1
-        dep = $2
-        if (!(dependent in depcount) || !(dep in depcount)) {
-            printf "%s\n", "unknown package in edge: " $1 " " $2 > "/dev/stderr"
-            bad = 1
-            next
-        }
-        dependents[dep] = dependents[dep] " " dependent
-        depcount[dependent]++
-    }
-    END {
-        if (bad) exit 1
-        emitted = 0
-        while (emitted < count) {
-            progress = 0
-            for (i = 1; i <= count; i++) {
-                node = ranked[i]
-                if (!done[node] && depcount[node] == 0) {
-                    print node
-                    done[node] = 1
-                    emitted++
-                    progress = 1
-                    users = dependents[node]
-                    user_count = split(users, user_list, " ")
-                    for (k = 1; k <= user_count; k++)
-                        if (user_list[k] != "") depcount[user_list[k]]--
-                }
-            }
-            if (!progress) {
-                print "dependency cycle detected" > "/dev/stderr"
-                exit 1
-            }
-        }
-    }
-') || fail "could not order workspace crates"
-
-# Crates without workspace dependencies can be dry-run before the release
-# commit; anything else must wait until its dependencies are published.
-LEAVES=$(printf '%s\n' "$EDGES" | awk -v nodes="$PKG_SPACE" '
-    BEGIN {
-        count = split(nodes, list, " ")
-        for (i = 1; i <= count; i++) hasdep[list[i]] = 0
-    }
-    NF == 2 { hasdep[$1] = 1 }
-    END {
-        for (i = 1; i <= count; i++)
-            if (!hasdep[list[i]]) print list[i]
-    }
-')
-[ -n "$LEAVES" ] || LEAVES=$(printf '%s\n' $PKG_SPACE | sort | sed -n '1p')
-
-# Query the registry and check ownership crate by crate before the script
-# edits any release file. Ownership of a never-published name cannot be
-# queried; the publish step surfaces that instead. Checking ownership right
-# after each version query fails fast on a dead token instead of running
-# every query first. Cargo output is captured so successful checks stay
-# silent; failures report it.
-MAX_PUBLISHED=
-for name in $PKG_SPACE; do
-    latest=$(registry_latest "$name")
-    if [ -n "$latest" ]; then
-        owner_output=$(cargo_public owner --list "$name" 2>&1) || fail "could not verify ownership of $name: $owner_output"
-        if [ -z "$MAX_PUBLISHED" ]; then
-            MAX_PUBLISHED=$latest
-        elif version_at_least "$latest" "$MAX_PUBLISHED"; then
-            if ! version_at_least "$MAX_PUBLISHED" "$latest"; then
-                MAX_PUBLISHED=$latest
+load_packages() {
+    mkdir -p "$ROOT/.work/tmp" || fail "could not create scratch directory"
+    packages_file=$ROOT/.work/tmp/publish-packages.$$
+    python3 tools/inventory.py packages > "$packages_file" || fail "could not read the package inventory"
+    [ -s "$packages_file" ] || fail "workspace has no publishable members"
+    http_current=
+    while IFS=' ' read -r name family version manifest; do
+        [ -n "$name" ] || continue
+        if [ "$family" = "http" ]; then
+            if [ -z "$http_current" ]; then
+                http_current=$version
+            elif [ "$http_current" != "$version" ]; then
+                fail "HTTP packages do not share one version"
             fi
         fi
-    fi
-done
+    done < "$packages_file"
+}
 
-git_subject=$(git log -1 --format=%s) || fail "could not read the current commit subject"
-tags_at_head=$(git tag --points-at HEAD) || fail "could not read tags at HEAD"
+ensure_release_tags() {
+    tag_body=$ROOT/.work/tmp/publish-tags.$$
+    git log -1 --format=%b > "$tag_body" || fail "could not read the release commit body"
+    while IFS= read -r line; do
+        case "$line" in
+            *" -> "*)
+                name=${line%% *}
+                rest=${line#* }
+                old=${rest%% -> *}
+                new=${rest##* -> }
+                if [ "$old" != "$new" ]; then
+                    ensure_tag "$name" "$new"
+                fi
+                ;;
+        esac
+    done < "$tag_body"
+    rm -f "$tag_body"
+}
 
-if [ "$git_subject" = "$release_subject" ]; then
-    ensure_clean_tree
-    for name in $TOPO_ORDER; do
-        ensure_tag "$name" "$LOCAL_VERSION"
-    done
-    pending=0
-    for name in $TOPO_ORDER; do
-        already=$(registry_latest "$name") || exit 1
-        if [ -n "$already" ] && version_at_least "$already" "$LOCAL_VERSION"; then
-            printf '%s\n' "$name $LOCAL_VERSION is already published; skipping"
-        else
-            pending=1
+publish_selected() {
+    printf '%s\n' "Publishing is not atomic. A failed upload leaves earlier packages on the registry; re-run the same release commit to continue."
+    while IFS=' ' read -r name family version manifest; do
+        [ -n "$name" ] || continue
+        set_planned "$family" "$version"
+        if exact_published "$name" "$planned"; then
+            printf '%s\n' "$name $planned is already published; skipping"
+            continue
         fi
-    done
-    if [ "$pending" -eq 0 ]; then
-        printf '%s\n' "all workspace crates already published; nothing to do"
-        exit 0
-    fi
-    printf '%s\n' "Retrying publish of unpublished workspace crates"
-    for name in $TOPO_ORDER; do
-        publish_package "$name" "$LOCAL_VERSION"
-    done
+        dry_run_package "$name"
+        publish_package "$name" "$planned"
+    done < "$packages_file"
+}
+
+publish_private() {
+    command -v "$STUFF" >/dev/null 2>&1 || fail "required command not found: $STUFF"
+    while IFS=' ' read -r name family version manifest; do
+        [ -n "$name" ] || continue
+        set_planned "$family" "$version"
+        if ! exact_published "$name" "$planned"; then
+            fail "$name $planned is not on crates.io; refusing private publication"
+        fi
+        publish_one_private "$name" "$planned"
+    done < "$packages_file"
+}
+
+backup_release_inputs() {
+    backup_dir_candidate=$TMPDIR/bump_minor_release.$$
+    (umask 077 && mkdir "$backup_dir_candidate") || fail "could not create private release backups"
+    backup_dir=$backup_dir_candidate
+    cp -p "$ROOT/Cargo.toml" "$backup_dir/Cargo.toml" || fail "could not back up Cargo.toml"
+    cp -p "$ROOT/Cargo.lock" "$backup_dir/Cargo.lock" || fail "could not back up Cargo.lock"
+    cp -p "$ROOT/UPSTREAM.toml" "$backup_dir/UPSTREAM.toml" || fail "could not back up UPSTREAM.toml"
+    cp -p "$ROOT/tests/qualify/Cargo.toml" "$backup_dir/qualify.toml" || fail "could not back up tests/qualify/Cargo.toml"
+    cp -p "$ROOT/tests/consumer/Cargo.toml" "$backup_dir/consumer.toml" || fail "could not back up tests/consumer/Cargo.toml"
+    cp -p "$ROOT/tests/consumer/Cargo.lock" "$backup_dir/consumer.lock" || fail "could not back up tests/consumer/Cargo.lock"
+}
+
+# Fail fast without a registry login before any registry query or file edit.
+ensure_registry_auth
+load_packages
+
+if [ "${PUBLISH_PRIVATE_ONLY:-}" = 1 ]; then
+    ensure_clean_tree
+    publish_private
     exit 0
 fi
 
-if [ -n "$MAX_PUBLISHED" ]; then
-    version_at_least "$MAX_PUBLISHED" "$LOCAL_VERSION" \
-        || fail "local workspace $LOCAL_VERSION is newer than published $MAX_PUBLISHED, but HEAD is not the matching release commit"
+git_subject=$(git log -1 --format=%s) || fail "could not read the current commit subject"
+if [ "$git_subject" = "$release_subject" ]; then
+    ensure_clean_tree
+    ensure_release_tags
+    publish_selected
+    publish_private
+    exit 0
 fi
-NEXT_VERSION=$(plan_next "$LOCAL_VERSION" "$MAX_PUBLISHED") || fail "could not plan next version"
-[ -n "$NEXT_VERSION" ] || fail "could not plan next version"
-[ "$NEXT_VERSION" != "$LOCAL_VERSION" ] || fail "could not plan next version"
+
+while IFS=' ' read -r name family version manifest; do
+    [ -n "$name" ] || continue
+    latest=$(registry_latest "$name") || exit 1
+    if [ -n "$latest" ]; then
+        owner_output=$(from_root cargo_public owner --list "$name" 2>&1) || fail "could not verify ownership of $name: $owner_output"
+    fi
+    note_latest "$family" "$latest"
+done < "$packages_file"
+
+runtime_current=$(python3 tools/inventory.py version) || fail "could not read release version"
+runtime_next=$(python3 tools/inventory.py next "$runtime_current" "$runtime_latest") || fail "could not plan the runtime version"
+if [ -n "$http_current" ]; then
+    http_next=$(python3 tools/inventory.py next "$http_current" "$http_latest") || fail "could not plan the HTTP version"
+    http_arg=$http_next
+else
+    http_arg=-
+fi
+[ -n "$runtime_next" ] || fail "could not plan the runtime version"
+[ "$runtime_next" != "$runtime_current" ] || fail "could not plan the runtime version"
+
+if [ -n "$runtime_latest" ] && ! python3 tools/inventory.py at-least "$runtime_latest" "$runtime_current"; then
+    fail "local runtime $runtime_current is newer than published $runtime_latest, but HEAD is not the matching release commit"
+fi
+if [ -n "$http_current" ] && [ -n "$http_latest" ] && ! python3 tools/inventory.py at-least "$http_latest" "$http_current"; then
+    fail "local http $http_current is newer than published $http_latest, but HEAD is not the matching release commit"
+fi
 
 existing_tags=$(git tag) || fail "could not list Git tags"
-for name in $TOPO_ORDER; do
-    next_tag=$name-v$NEXT_VERSION
+while IFS=' ' read -r name family version manifest; do
+    [ -n "$name" ] || continue
+    set_planned "$family" "$version"
+    [ "$planned" = "$version" ] && continue
+    next_tag=$name-v$planned
     case "$newline$existing_tags$newline" in
         *"$newline$next_tag$newline"*) fail "tag $next_tag already exists away from the release commit" ;;
     esac
-done
+done < "$packages_file"
+
+printf '%s\n' "runtime $runtime_current -> $runtime_next"
+if [ -n "$http_current" ]; then
+    printf '%s\n' "http $http_current -> $http_next"
+fi
+printf '%s\n' "protocol versions stay at their declared releases"
+
 ensure_clean_tree
 
-release_body=$(for name in $PKG_SPACE; do
-    printf '%s %s -> %s\n' "$name" "$LOCAL_VERSION" "$NEXT_VERSION"
-done | sort)
+if [ "${PUBLISH_DRY_RUN:-}" = 1 ]; then
+    mkdir -p "$ROOT/.work/tmp" || fail "could not create scratch directory"
+    dry_clone_dir=$(mktemp -d "$ROOT/.work/tmp/publish-dry.XXXXXX") || fail "could not create a dry-run directory"
+    git clone --local --quiet "$ROOT" "$dry_clone_dir/checkout" || fail "could not clone for the dry run"
+    printf '%s\n' "publish dry-run: runtime $runtime_next http $http_arg"
+    (cd "$dry_clone_dir/checkout" && python3 tools/release_apply.py apply "$runtime_next" "$http_arg") || fail "dry-run apply failed"
+    (cd "$dry_clone_dir/checkout" && python3 tools/stage.py) || fail "dry-run staging failed"
+    printf '%s\n' "publish dry-run complete"
+    exit 0
+fi
 
-backup_dir_candidate=${TMPDIR:-/tmp}/bump_minor_release.$$
-(umask 077 && mkdir "$backup_dir_candidate") || fail "could not create private release backups"
-backup_dir=$backup_dir_candidate
-cp -p "$ROOT/Cargo.toml" "$backup_dir/Cargo.toml" || fail "could not back up Cargo.toml"
-cp -p "$ROOT/Cargo.lock" "$backup_dir/Cargo.lock" || fail "could not back up Cargo.lock"
-cp -p "$ROOT/UPSTREAM.toml" "$backup_dir/UPSTREAM.toml" || fail "could not back up UPSTREAM.toml"
-cp -p "$ROOT/tests/qualify/Cargo.toml" "$backup_dir/qualify.toml" || fail "could not back up tests/qualify/Cargo.toml"
-cp -p "$ROOT/tests/consumer/Cargo.toml" "$backup_dir/consumer.toml" || fail "could not back up tests/consumer/Cargo.toml"
-cp -p "$ROOT/tests/consumer/Cargo.lock" "$backup_dir/consumer.lock" || fail "could not back up tests/consumer/Cargo.lock"
+body_unsorted=$ROOT/.work/tmp/publish-body.$$
+: > "$body_unsorted" || fail "could not build the release commit body"
+while IFS=' ' read -r name family version manifest; do
+    [ -n "$name" ] || continue
+    if [ "$family" = "runtime" ]; then
+        body_planned=$runtime_next
+    elif [ "$family" = "http" ]; then
+        body_planned=$http_next
+    elif [ "$family" = "protocol" ]; then
+        body_planned=$version
+    else
+        fail "unknown release family $family"
+    fi
+    printf '%s %s -> %s\n' "$name" "$version" "$body_planned" >> "$body_unsorted"
+done < "$packages_file"
+release_body=$(sort "$body_unsorted") || fail "could not build the release commit body"
+rm -f "$body_unsorted"
+
+backup_release_inputs
 release_started=1
+python3 tools/release_apply.py apply "$runtime_next" "$http_arg" || fail "could not apply release versions"
 
-bump_workspace_version() {
-    temporary_manifest_candidate=$ROOT/.Cargo.toml.bump.$$
-    (umask 077 && set -C && : > "$temporary_manifest_candidate") || fail "could not create temporary manifest"
-    temporary_manifest=$temporary_manifest_candidate
-    cp -p "$1" "$temporary_manifest" || fail "could not preserve Cargo.toml permissions"
-    awk -v old="$2" -v new="$3" '
-        /^[ \t]*\[workspace\.package\][ \t]*$/ { section = "package"; print; next }
-        /^[ \t]*\[workspace\.dependencies\][ \t]*$/ { section = "deps"; print; next }
-        /^[ \t]*\[/ { section = ""; print; next }
-        section == "package" {
-            line = $0
-            stripped = line
-            sub(/^[ \t]*/, "", stripped)
-            sub(/[ \t]*$/, "", stripped)
-            if (stripped ~ /^version[ \t]*=/) {
-                matches++
-                if (stripped != "version = \"" old "\"") exit 1
-                print "version = \"" new "\""
-                next
-            }
-        }
-        section == "deps" {
-            if ($0 ~ /version[ \t]*=[ \t]*"/) {
-                want = "version = \"" old "\""
-                give = "version = \"" new "\""
-                if (index($0, want) == 0) exit 1
-                out = ""
-                rest = $0
-                found = 0
-                while ((pos = index(rest, want)) > 0) {
-                    found++
-                    out = out substr(rest, 1, pos - 1) give
-                    rest = substr(rest, pos + length(want))
-                }
-                if (found != 1) exit 1
-                matches++
-                print out rest
-                next
-            }
-        }
-        { print }
-        END { if (matches < 2) exit 1 }
-    ' "$1" > "$temporary_manifest" || fail "$1 version changed or could not be updated"
-    mv "$temporary_manifest" "$1" || fail "could not install updated $1"
-    temporary_manifest=
-}
+from_root cargo check --manifest-path "$ROOT/Cargo.toml" --workspace --quiet
+from_root cargo update --manifest-path "$ROOT/tests/consumer/Cargo.toml"
+"$ROOT/tests/consumer/check.sh"
+python3 tools/stage.py
 
-bump_upstream_versions() {
-    temporary_manifest_candidate=$ROOT/.UPSTREAM.toml.bump.$$
-    (umask 077 && set -C && : > "$temporary_manifest_candidate") || fail "could not create temporary manifest"
-    temporary_manifest=$temporary_manifest_candidate
-    cp -p "$1" "$temporary_manifest" || fail "could not preserve UPSTREAM.toml permissions"
-    awk -v old="$2" -v new="$3" '
-        {
-            line = $0
-            stripped = line
-            sub(/^[ \t]*/, "", stripped)
-            if (stripped == "version = \"" old "\"") {
-                matches++
-                print "version = \"" new "\""
-                next
-            }
-            print
-        }
-        END { if (matches < 1) exit 1 }
-    ' "$1" > "$temporary_manifest" || fail "$1 version changed or could not be updated"
-    count=$(grep -c "^version = \"$3\"" "$temporary_manifest") || fail "could not verify $1"
-    expected=$(printf '%s\n' "$PKG_SPACE" | wc -w | tr -d ' ')
-    [ "$count" = "$expected" ] || fail "$1 has $count version $3 entries, expected $expected"
-    mv "$temporary_manifest" "$1" || fail "could not install updated $1"
-    temporary_manifest=
-}
-
-# Track the new version in a smol path requirement. The requirement
-# operator (bare, =, ^, ~) is preserved; anything else fails.
-rewrite_requirement() {
-    awk -v dep="$2" -v old="$3" -v new="$4" '
-        BEGIN {
-            prefixes[1] = ""
-            prefixes[2] = "="
-            prefixes[3] = "^"
-            prefixes[4] = "~"
-        }
-        {
-            line = $0
-            stripped = line
-            sub(/^[ \t]*/, "", stripped)
-            if (stripped ~ ("^" dep "[ \t]*=")) {
-                matched++
-                total = 0
-                for (k = 1; k <= 4; k++) {
-                    want = "version = \"" prefixes[k] old "\""
-                    give = "version = \"" prefixes[k] new "\""
-                    out = ""
-                    rest = line
-                    found = 0
-                    while ((pos = index(rest, want)) > 0) {
-                        found++
-                        out = out substr(rest, 1, pos - 1) give
-                        rest = substr(rest, pos + length(want))
-                    }
-                    if (found > 0) {
-                        total += found
-                        line = out rest
-                    }
-                }
-                if (total != 1) exit 1
-                print line
-                next
-            }
-            print
-        }
-        END { if (matched < 1) exit 1 }
-    ' "$1" > "$temporary_manifest" || fail "dependency $2 in $1 changed or could not be updated"
-    mv "$temporary_manifest" "$1" || fail "could not install updated $1"
-    temporary_manifest=
-}
-
-bump_workspace_version "$ROOT/Cargo.toml" "$LOCAL_VERSION" "$NEXT_VERSION"
-bump_upstream_versions "$ROOT/UPSTREAM.toml" "$LOCAL_VERSION" "$NEXT_VERSION"
-
-for file in tests/qualify/Cargo.toml tests/consumer/Cargo.toml; do
-    temporary_manifest_candidate=$ROOT/.Cargo.toml.bump.$$
-    (umask 077 && set -C && : > "$temporary_manifest_candidate") || fail "could not create temporary manifest"
-    temporary_manifest=$temporary_manifest_candidate
-    cp -p "$ROOT/$file" "$temporary_manifest" || fail "could not preserve Cargo.toml permissions"
-    rewrite_requirement "$ROOT/$file" "smol" "$LOCAL_VERSION" "$NEXT_VERSION"
-done
-
-cargo check --workspace --quiet
-# tests/consumer is its own workspace, so the check above cannot refresh its
-# lockfile. Resolve and test the consumer here so the release commit carries a
-# lockfile that matches the rewritten requirement instead of leaving --locked
-# stale until the next minor bump.
-tests/consumer/check.sh
-for name in $LEAVES; do
-    dry_run_package "$name"
-done
-# shellcheck disable=SC2086
-git add -- $RESET_PATHS
+git add -u -- Cargo.toml Cargo.lock UPSTREAM.toml tests benchmarks crates
 git commit -m "$release_subject" -m "$release_body"
 release_committed=1
-for name in $TOPO_ORDER; do
-    ensure_tag "$name" "$NEXT_VERSION"
-done
-
-# Dependencies must reach the registry before their dependents can even be
-# dry-run, so each crate is validated and published in dependency order
-# after the release commit.
-for name in $TOPO_ORDER; do
-    dry_run_package "$name"
-    publish_package "$name" "$NEXT_VERSION"
-done
-
+ensure_release_tags
+publish_selected
+publish_private
