@@ -25,7 +25,7 @@ The workspace `rust-version` is 1.85. HTTP crates declare their own minimums, th
 
 h12tiny is the HTTP facade. Its library has no default features. The component crates (`h12tiny-core`, `h12tiny-client`, `h12tiny-client-sync`, `h12tiny-server`, and the others) can be used directly. Protocol forks are `laputa-h2-futures-lite`, `laputa-hyper-futures-lite`, and `laputa-fastwebsockets-futures-lite`.
 
-Registry users keep these package names. Git users clone `https://github.com/laputa-systems/smolith` and select the same packages. Path users point at `crates/h12tiny` and the sibling component directories. Older h12tiny commits, tags, and published crates stay available.
+Registry users keep these package names. Git users clone `https://github.com/laputa-systems/smolith` and select the same packages. Path users point at `crates/h12tiny` and the sibling component directories. Older h12tiny commits, tags, and published crates stay available. The [h12tiny repository](https://github.com/laputa-systems/h12tiny) is archived.
 
 ```toml
 [dependencies]
