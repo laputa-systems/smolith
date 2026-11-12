@@ -7,6 +7,8 @@ description: "Port a Rust application from Tokio or reqwest to laputa-smol and h
 
 Use this skill when the owner asks to migrate an application from Tokio, reqwest, or both to the smolith runtime and h12tiny. The request to write or revise this skill does not authorize a migration. Preserve the application's existing behavior and its unrelated changes. Check the target repository's instructions and dependency sources before editing.
 
+When a standalone package's worktree is nested under an actively edited checkout, Cargo may parse the parent manifest while searching for a workspace. If that manifest is temporarily invalid, a temporary `[workspace]` in the worktree manifest isolates the build. Remove the temporary section before committing and recheck workspace discovery.
+
 ## Inspect the application
 
 1. Inventory direct and transitive Tokio and reqwest dependencies, including dev dependencies, target-specific dependencies, enabled features, and generated code. Use `cargo tree` with the target's supported feature sets and inspect reverse dependencies. A source search alone cannot prove the dependency graph is clear.
