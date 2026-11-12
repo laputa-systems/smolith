@@ -78,3 +78,47 @@ fn background_write_error_surfaces_on_flush() {
         let _io = writer.into_inner().await;
     });
 }
+
+fn always_failing_writer() -> Unblock<FailWrite> {
+    Unblock::with_capacity(
+        64,
+        FailWrite {
+            accepted: 0,
+            fail_after: 0,
+        },
+    )
+}
+
+#[test]
+fn flush_after_get_mut_reports_background_write_error() {
+    future::block_on(async {
+        let mut writer = always_failing_writer();
+        writer
+            .write_all(b"lost data")
+            .await
+            .expect("the pipe accepts the bytes");
+        let _handle = writer.get_mut().await;
+        let err = writer
+            .flush()
+            .await
+            .expect_err("flush reports the background write error");
+        assert_eq!(err.kind(), ErrorKind::Other);
+    });
+}
+
+#[test]
+fn flush_after_with_mut_reports_background_write_error() {
+    future::block_on(async {
+        let mut writer = always_failing_writer();
+        writer
+            .write_all(b"lost data")
+            .await
+            .expect("the pipe accepts the bytes");
+        writer.with_mut(|_handle| ()).await;
+        let err = writer
+            .flush()
+            .await
+            .expect_err("flush reports the background write error");
+        assert_eq!(err.kind(), ErrorKind::Other);
+    });
+}

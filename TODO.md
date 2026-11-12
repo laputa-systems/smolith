@@ -1,15 +1,6 @@
 Prefix: SMOL
 Next: 13
 
-### SMOL-3 · P1 · Accessing an Unblock handle erases pending write failures
-
-- **Area:** Errors
-- **Where:** `crates/blocking/src/lib.rs:574`, `crates/blocking/src/lib.rs:608`, `crates/blocking/src/lib.rs:721`, `crates/blocking/src/lib.rs:1082`
-- **Problem:** `get_mut()` and `with_mut()` discard the error returned by `poll_stop()` after it restores `State::Idle`. A subsequent flush can succeed although previously accepted bytes never reached the inner writer. Reproduced with `Unblock::with_capacity(64, writer)`, where `writer.write()` always fails and `writer.flush()` succeeds: `write_all(b"lost data")`, either accessor, and `flush()` all return successfully. Neither accessor documents discarding pending write errors. The caller has followed the documented flush-before-drop requirement.
-- **Recommendation:** Preserve a background write or flush error in the existing pending-error state when an accessor stops the task, then return it from the next write, flush, or close. Keep the accessor signatures. Cover write → get_mut/with_mut → flush with a failing inner writer, and keep extraction's flush-before-handoff contract explicit.
-- **Fix with:** `error-model`
-- **Effort:** S
-
 ### SMOL-9 · P1 · File synchronization discards unread buffered bytes
 
 - **Area:** Data

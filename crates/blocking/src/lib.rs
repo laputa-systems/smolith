@@ -558,6 +558,8 @@ impl<T> Unblock<T> {
     /// This is an async method because the I/O handle might be on the thread pool and needs to
     /// be moved onto the current thread before we can get a reference to it.
     ///
+    /// A background write or flush error is kept and returned by the next write, flush, or close.
+    ///
     /// # Examples
     ///
     /// ```no_run
@@ -572,8 +574,7 @@ impl<T> Unblock<T> {
     /// # std::io::Result::Ok(()) });
     /// ```
     pub async fn get_mut(&mut self) -> &mut T {
-        // Wait for the running task to stop and ignore I/O errors if there are any.
-        future::poll_fn(|cx| self.poll_stop(cx)).await.ok();
+        future::poll_fn(|cx| self.poll_stop_for_accessor(cx)).await;
         self.needs_flush = true;
 
         // Assume idle state and get a reference to the inner value.
@@ -591,6 +592,8 @@ impl<T> Unblock<T> {
     }
 
     /// Performs a blocking operation on the I/O handle.
+    ///
+    /// A background write or flush error is kept and returned by the next write, flush, or close.
     ///
     /// # Examples
     ///
@@ -611,8 +614,7 @@ impl<T> Unblock<T> {
         R: Send + 'static,
         T: Send + 'static,
     {
-        // Wait for the running task to stop and ignore I/O errors if there are any.
-        future::poll_fn(|cx| self.poll_stop(cx)).await.ok();
+        future::poll_fn(|cx| self.poll_stop_for_accessor(cx)).await;
 
         // Assume idle state and take out the inner value.
         let mut t = match &mut self.state {
@@ -644,6 +646,9 @@ impl<T> Unblock<T> {
     ///
     /// This is an async method because the I/O handle might be on the thread pool and needs to
     /// be moved onto the current thread before we can extract it.
+    ///
+    /// Flush successfully before extracting the handle. Extraction does not return a pending
+    /// I/O error.
     ///
     /// # Examples
     ///
@@ -679,6 +684,16 @@ impl<T> Unblock<T> {
                 unreachable!("when stopped, the state machine must be in idle state");
             }
         }
+    }
+
+    fn poll_stop_for_accessor(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        let retain_write_error = matches!(self.state, State::Writing(..) | State::Flushing(..));
+        if let Err(err) = ready!(self.poll_stop(cx)) {
+            if retain_write_error && self.write_error.is_none() {
+                self.write_error = Some(err);
+            }
+        }
+        Poll::Ready(())
     }
 
     /// Waits for the running task to stop.
