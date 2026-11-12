@@ -20,15 +20,6 @@ Next: 27
 - **Fix with:** `single-source-of-truth`
 - **Effort:** S (hours)
 
-### H12T-21 · P2 · Blocking chunk decoding loses framing progress after a read timeout
-
-- **Area:** Data
-- **Where:** `crates/h12tiny-client-sync/src/lib.rs:515`, `:555`, `:578`.
-- **Problem:** `read_chunked` consumes the separator after a chunk while leaving `separator_due` set. If reading the next size line returns a recoverable timeout, the next `Read::read` consumes the separator again and rejects valid input. A bounded loopback check delivered one valid chunk, paused using a channel while a 30 ms body-read timeout elapsed, and then delivered the next valid chunk and terminator. The retry returned `InvalidData: HTTP chunk data was not followed by CRLF`. Partial separators and the zero-chunk/trailer path also keep progress only in stack locals. The check used the real public client and joined its fixture thread.
-- **Recommendation:** Persist separator, size-line, data, and trailer phases, including partial framing progress and trailer byte accounting. Advance state as bytes are consumed. Verify retry after a recoverable read error between chunks, after the first separator byte, and during trailers through `ResponseBody`.
-- **Fix with:** `make-invalid-states-unrepresentable`
-- **Effort:** M (days)
-
 ### H12T-22 · P2 · A canceled WebSocket Close can report success without sending bytes
 
 - **Area:** Concurrency

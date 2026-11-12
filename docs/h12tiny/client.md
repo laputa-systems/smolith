@@ -76,7 +76,8 @@ Connection setup has its separate `connect_timeout`; the dispatch deadline
 is cleared before returning the response body. `ResponseBody::set_read_timeout`
 changes the timeout for subsequent network reads even when data is buffered.
 `is_complete()` records fixed-length and chunked completion, and real EOF for
-close-delimited bodies. Streaming uploads use `request_streaming` with a
+close-delimited bodies. A timed-out chunked read keeps accepted separator,
+size-line, chunk, and trailer progress, so a later `Read` continues that body. Streaming uploads use `request_streaming` with a
 declared content length and a `std::io::Read` body; callers own the behavior
 of that reader.
 

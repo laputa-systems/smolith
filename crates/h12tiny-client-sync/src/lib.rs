@@ -16,6 +16,7 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::num::NonZeroU64;
 use std::time::{Duration, Instant};
 
 use h12tiny_client_normalize::{
@@ -552,80 +553,78 @@ impl ResponseBody {
         }
     }
 
-    fn consume_trailers(&mut self) -> io::Result<()> {
-        let mut total: usize = 0;
-        loop {
-            let line = self.read_line(MAX_CHUNK_LINE_BYTES)?;
-            total = total.saturating_add(line.len() + 2);
-            if total > MAX_TRAILER_BYTES {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "HTTP response trailers exceed the configured limit",
-                ));
-            }
-            if line.is_empty() {
-                return Ok(());
-            }
-            if !line.contains(&b':') {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "malformed HTTP response trailer",
-                ));
-            }
-        }
-    }
-
     fn read_chunked(&mut self, output: &mut [u8]) -> io::Result<usize> {
         loop {
-            let (remaining, separator_due) = match self.mode {
-                BodyMode::Chunked(ChunkedBody::Reading {
-                    remaining,
-                    separator_due,
-                }) => (remaining, separator_due),
+            match self.mode {
                 BodyMode::Chunked(ChunkedBody::Complete) => return Ok(0),
-                _ => unreachable!("chunked reader requires chunked body state"),
-            };
-            if remaining == 0 {
-                if separator_due {
-                    let mut separator = [0_u8; 2];
-                    self.read_exact_buffered(&mut separator)?;
-                    if separator != *b"\r\n" {
+                BodyMode::Chunked(ChunkedBody::Data { remaining }) => {
+                    let wanted = output
+                        .len()
+                        .min(usize::try_from(remaining.get()).unwrap_or(usize::MAX));
+                    let read = self.read_buffered(&mut output[..wanted])?;
+                    if read == 0 {
+                        return Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            "HTTP response ended in a chunk",
+                        ));
+                    }
+                    let count = u64::try_from(read).expect("usize fits in u64");
+                    let remaining = remaining.get() - count;
+                    self.mode = match NonZeroU64::new(remaining) {
+                        Some(remaining) => BodyMode::Chunked(ChunkedBody::Data { remaining }),
+                        None => BodyMode::Chunked(ChunkedBody::Separator(SeparatorProgress::Start)),
+                    };
+                    return Ok(read);
+                }
+                BodyMode::Chunked(ChunkedBody::Separator(progress)) => {
+                    let mut byte = [0_u8; 1];
+                    self.read_exact_buffered(&mut byte)?;
+                    self.mode = match (progress, byte[0]) {
+                        (SeparatorProgress::Start, b'\r') => BodyMode::Chunked(
+                            ChunkedBody::Separator(SeparatorProgress::AfterCarriageReturn),
+                        ),
+                        (SeparatorProgress::AfterCarriageReturn, b'\n') => {
+                            BodyMode::Chunked(ChunkedBody::Size)
+                        }
+                        _ => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "HTTP chunk data was not followed by CRLF",
+                            ))
+                        }
+                    };
+                }
+                BodyMode::Chunked(ChunkedBody::Size) => {
+                    let line = self.read_line(MAX_CHUNK_LINE_BYTES)?;
+                    let size = parse_chunk_size(&line)?;
+                    self.mode = match NonZeroU64::new(size) {
+                        Some(remaining) => BodyMode::Chunked(ChunkedBody::Data { remaining }),
+                        None => BodyMode::Chunked(ChunkedBody::Trailers { counted: 0 }),
+                    };
+                }
+                BodyMode::Chunked(ChunkedBody::Trailers { counted }) => {
+                    let line = self.read_line(MAX_CHUNK_LINE_BYTES)?;
+                    let counted = counted.saturating_add(line.len().saturating_add(2));
+                    self.mode = BodyMode::Chunked(ChunkedBody::Trailers { counted });
+                    if counted > MAX_TRAILER_BYTES {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            "HTTP chunk data was not followed by CRLF",
+                            "HTTP response trailers exceed the configured limit",
+                        ));
+                    }
+                    if line.is_empty() {
+                        self.mode = BodyMode::Chunked(ChunkedBody::Complete);
+                        return Ok(0);
+                    }
+                    if !line.contains(&b':') {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "malformed HTTP response trailer",
                         ));
                     }
                 }
-                let line = self.read_line(MAX_CHUNK_LINE_BYTES)?;
-                let size = parse_chunk_size(&line)?;
-                if size == 0 {
-                    self.consume_trailers()?;
-                    self.mode = BodyMode::Chunked(ChunkedBody::Complete);
-                    return Ok(0);
-                }
-                self.mode = BodyMode::Chunked(ChunkedBody::Reading {
-                    remaining: size,
-                    separator_due: false,
-                });
-                continue;
+                _ => unreachable!("chunked reader requires chunked body state"),
             }
-
-            let wanted = output
-                .len()
-                .min(usize::try_from(remaining).unwrap_or(usize::MAX));
-            let read = self.read_buffered(&mut output[..wanted])?;
-            if read == 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "HTTP response ended in a chunk",
-                ));
-            }
-            let count = u64::try_from(read).expect("usize fits in u64");
-            self.mode = BodyMode::Chunked(ChunkedBody::Reading {
-                remaining: remaining - count,
-                separator_due: remaining == count,
-            });
-            return Ok(read);
         }
     }
 }
@@ -731,11 +730,17 @@ enum BodyMode {
 
 #[derive(Clone, Copy)]
 enum ChunkedBody {
-    Reading {
-        remaining: u64,
-        separator_due: bool,
-    },
+    Size,
+    Data { remaining: NonZeroU64 },
+    Separator(SeparatorProgress),
+    Trailers { counted: usize },
     Complete,
+}
+
+#[derive(Clone, Copy)]
+enum SeparatorProgress {
+    Start,
+    AfterCarriageReturn,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1135,10 +1140,7 @@ fn response_body_mode(
                 "HTTP response has unsupported or ambiguous transfer framing",
             ));
         }
-        return Ok(BodyMode::Chunked(ChunkedBody::Reading {
-            remaining: 0,
-            separator_due: false,
-        }));
+        return Ok(BodyMode::Chunked(ChunkedBody::Size));
     }
 
     let mut content_length = None;
@@ -1561,6 +1563,185 @@ mod tests {
             error.kind(),
             std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
         ));
+    }
+
+    fn read_request_head(stream: &mut impl Read) {
+        let mut request = Vec::new();
+        loop {
+            let mut input = [0_u8; 1024];
+            let read = stream.read(&mut input).unwrap();
+            assert_ne!(read, 0, "client closed before the request head");
+            request.extend_from_slice(&input[..read]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+    }
+
+    fn chunked_response_head() -> &'static [u8] {
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+    }
+
+    fn is_read_timeout(error: &std::io::Error) -> bool {
+        matches!(
+            error.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        )
+    }
+
+    #[test]
+    fn chunked_read_retries_after_a_timeout_between_chunks() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (release, wait_for_release) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request_head(&mut stream);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nfirst\r\n")
+                .unwrap();
+            stream.flush().unwrap();
+            wait_for_release.recv().unwrap();
+            stream.write_all(b"6\r\nsecond\r\n0\r\n\r\n").unwrap();
+        });
+
+        let request = Request::builder()
+            .uri(format!("http://{address}/chunks"))
+            .body(Vec::new())
+            .unwrap();
+        let mut response = Client::new().request(request).unwrap();
+        response
+            .body_mut()
+            .set_read_timeout(Some(Duration::from_millis(30)))
+            .unwrap();
+        let mut first = [0_u8; 5];
+        response.body_mut().read_exact(&mut first).unwrap();
+        assert_eq!(&first, b"first");
+
+        let error = response
+            .body_mut()
+            .read(&mut [0_u8; 1])
+            .expect_err("the next chunk is withheld");
+        assert!(is_read_timeout(&error), "{error}");
+
+        release.send(()).unwrap();
+        response
+            .body_mut()
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut rest = Vec::new();
+        response.body_mut().read_to_end(&mut rest).unwrap();
+        assert_eq!(rest, b"second");
+        assert!(response.body().is_complete());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn chunked_read_retries_after_a_timeout_on_the_first_separator_byte() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (release, wait_for_release) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request_head(&mut stream);
+            stream.write_all(chunked_response_head()).unwrap();
+            stream.write_all(b"5\r\nfirst\r").unwrap();
+            stream.flush().unwrap();
+            wait_for_release.recv().unwrap();
+            stream.write_all(b"\n6\r\nsecond\r\n0\r\n\r\n").unwrap();
+        });
+
+        let request = Request::builder()
+            .uri(format!("http://{address}/chunks"))
+            .body(Vec::new())
+            .unwrap();
+        let mut response = Client::new().request(request).unwrap();
+        response
+            .body_mut()
+            .set_read_timeout(Some(Duration::from_millis(30)))
+            .unwrap();
+        let mut first = [0_u8; 5];
+        response.body_mut().read_exact(&mut first).unwrap();
+        assert_eq!(&first, b"first");
+
+        let error = response
+            .body_mut()
+            .read(&mut [0_u8; 1])
+            .expect_err("the separator is only half delivered");
+        assert!(is_read_timeout(&error), "{error}");
+
+        release.send(()).unwrap();
+        response
+            .body_mut()
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut rest = Vec::new();
+        response.body_mut().read_to_end(&mut rest).unwrap();
+        assert_eq!(rest, b"second");
+        assert!(response.body().is_complete());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn chunked_read_retries_trailers_and_keeps_their_size_limit() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (release, wait_for_release) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request_head(&mut stream);
+            let value = vec![b'a'; 7000];
+            stream.write_all(chunked_response_head()).unwrap();
+            stream.write_all(b"1\r\nx\r\n0\r\n").unwrap();
+            for _ in 0..5 {
+                stream.write_all(b"X: ").unwrap();
+                stream.write_all(&value).unwrap();
+                stream.write_all(b"\r\n").unwrap();
+            }
+            stream.flush().unwrap();
+            wait_for_release.recv().unwrap();
+            for _ in 0..5 {
+                stream.write_all(b"Y: ").unwrap();
+                stream.write_all(&value).unwrap();
+                stream.write_all(b"\r\n").unwrap();
+            }
+            stream.write_all(b"\r\n").unwrap();
+        });
+
+        let request = Request::builder()
+            .uri(format!("http://{address}/chunks"))
+            .body(Vec::new())
+            .unwrap();
+        let mut response = Client::new().request(request).unwrap();
+        response
+            .body_mut()
+            .set_read_timeout(Some(Duration::from_millis(30)))
+            .unwrap();
+        let mut byte = [0_u8; 1];
+        response.body_mut().read_exact(&mut byte).unwrap();
+        assert_eq!(&byte, b"x");
+
+        let error = response
+            .body_mut()
+            .read(&mut [0_u8; 1])
+            .expect_err("trailers are incomplete");
+        assert!(is_read_timeout(&error), "{error}");
+
+        release.send(()).unwrap();
+        response
+            .body_mut()
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let error = response
+            .body_mut()
+            .read_to_end(&mut Vec::new())
+            .expect_err("trailer bytes from both attempts count toward the limit");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(
+            error.to_string(),
+            "HTTP response trailers exceed the configured limit"
+        );
+        server.join().unwrap();
     }
 
     #[test]
