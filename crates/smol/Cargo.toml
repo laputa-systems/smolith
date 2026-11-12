@@ -30,7 +30,6 @@ async-process = { workspace = true }
 
 [dev-dependencies]
 async-dup = { package = "laputa-async-dup", path = "../async-dup" }
-ctrlc = "3"
 doc-comment = "0.3"
 signal-hook = "0.4"
 smol-macros = { package = "laputa-smol-macros", path = "../smol-macros" }
