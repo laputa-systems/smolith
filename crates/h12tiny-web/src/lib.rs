@@ -800,14 +800,23 @@ struct Endpoint<S> {
     handler: Arc<dyn ErasedHandler<S>>,
     body_limit: Option<usize>,
     timeout: HandlerTimeout,
+    state: Option<S>,
+    #[cfg(feature = "cors")]
+    cors: Option<Arc<Cors>>,
 }
 
-impl<S> Clone for Endpoint<S> {
+impl<S> Clone for Endpoint<S>
+where
+    S: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             handler: self.handler.clone(),
             body_limit: self.body_limit,
             timeout: self.timeout,
+            state: self.state.clone(),
+            #[cfg(feature = "cors")]
+            cors: self.cors.clone(),
         }
     }
 }
@@ -865,7 +874,10 @@ pub struct MethodRouter<S = ()> {
     methods: HashMap<Method, Endpoint<S>>,
 }
 
-impl<S> Clone for MethodRouter<S> {
+impl<S> Clone for MethodRouter<S>
+where
+    S: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             methods: self.methods.clone(),
@@ -937,6 +949,9 @@ where
             }),
             body_limit: None,
             timeout: HandlerTimeout::Inherit,
+            state: None,
+            #[cfg(feature = "cors")]
+            cors: None,
         },
     )
 }
@@ -1015,7 +1030,10 @@ struct RouteEntry<S> {
     methods: MethodRouter<S>,
 }
 
-impl<S> Clone for RouteEntry<S> {
+impl<S> Clone for RouteEntry<S>
+where
+    S: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             methods: self.methods.clone(),
@@ -1028,11 +1046,47 @@ struct RouterRoutes<S> {
     matcher: MatchRouter<usize>,
 }
 
-impl<S> Clone for RouterRoutes<S> {
+impl<S> Clone for RouterRoutes<S>
+where
+    S: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             routes: self.routes.clone(),
             matcher: self.matcher.clone(),
+        }
+    }
+}
+
+struct ScopedFallback<S> {
+    prefix: String,
+    endpoint: Endpoint<S>,
+}
+
+impl<S> Clone for ScopedFallback<S>
+where
+    S: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            prefix: self.prefix.clone(),
+            endpoint: self.endpoint.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "cors")]
+struct ScopedCors {
+    prefix: String,
+    cors: Arc<Cors>,
+}
+
+#[cfg(feature = "cors")]
+impl Clone for ScopedCors {
+    fn clone(&self) -> Self {
+        Self {
+            prefix: self.prefix.clone(),
+            cors: self.cors.clone(),
         }
     }
 }
@@ -1071,11 +1125,14 @@ impl RouterBounds {
 pub struct Router<S = ()> {
     routes: Arc<RouterRoutes<S>>,
     fallback: Option<Endpoint<S>>,
+    scoped_fallbacks: Vec<ScopedFallback<S>>,
     default_body_limit: Option<usize>,
     default_timeout: Option<Duration>,
     state: Option<S>,
     #[cfg(feature = "cors")]
     cors: Option<Arc<Cors>>,
+    #[cfg(feature = "cors")]
+    scoped_cors: Vec<ScopedCors>,
 }
 
 impl<S> Clone for Router<S>
@@ -1086,11 +1143,14 @@ where
         Self {
             routes: Arc::clone(&self.routes),
             fallback: self.fallback.clone(),
+            scoped_fallbacks: self.scoped_fallbacks.clone(),
             default_body_limit: self.default_body_limit,
             default_timeout: self.default_timeout,
             state: self.state.clone(),
             #[cfg(feature = "cors")]
             cors: self.cors.clone(),
+            #[cfg(feature = "cors")]
+            scoped_cors: self.scoped_cors.clone(),
         }
     }
 }
@@ -1105,11 +1165,14 @@ impl<S> Router<S> {
                 matcher: MatchRouter::new(),
             }),
             fallback: None,
+            scoped_fallbacks: Vec::new(),
             default_body_limit: None,
             default_timeout: None,
             state: None,
             #[cfg(feature = "cors")]
             cors: None,
+            #[cfg(feature = "cors")]
+            scoped_cors: Vec::new(),
         }
     }
 
@@ -1120,7 +1183,10 @@ impl<S> Router<S> {
     /// [`MethodRouter::without_timeout`] settings are preserved, as are
     /// per-route values already applied by [`Router::body_limit`] and
     /// [`Router::timeout`].
-    pub fn production(self) -> Self {
+    pub fn production(self) -> Self
+    where
+        S: Clone,
+    {
         self.with_bounds(RouterBounds::default())
             .expect("production bounds are valid")
     }
@@ -1129,7 +1195,10 @@ impl<S> Router<S> {
     ///
     /// A zero handler timeout is rejected. Use `handler_timeout: None` to keep
     /// handlers unbounded while still applying the body limit.
-    pub fn with_bounds(mut self, bounds: RouterBounds) -> io::Result<Self> {
+    pub fn with_bounds(mut self, bounds: RouterBounds) -> io::Result<Self>
+    where
+        S: Clone,
+    {
         let bounds = bounds.validate()?;
         self.default_body_limit = Some(bounds.body_limit.get());
         self.default_timeout = bounds.handler_timeout;
@@ -1141,17 +1210,26 @@ impl<S> Router<S> {
         if let Some(fallback) = self.fallback.as_mut() {
             fallback.apply_defaults(body_limit, timeout);
         }
+        for scoped in &mut self.scoped_fallbacks {
+            scoped.endpoint.apply_defaults(body_limit, timeout);
+        }
         Ok(self)
     }
 
     /// Attach the shared state used by [`State`] extractors.
+    ///
+    /// A route keeps a state value already bound by composition. Every other
+    /// route, including routes added after this call, uses `state`.
     pub fn with_state(mut self, state: S) -> Self {
         self.state = Some(state);
         self
     }
 
     /// Add or extend a path route.
-    pub fn route(mut self, path: &str, mut methods: MethodRouter<S>) -> Self {
+    pub fn route(mut self, path: &str, mut methods: MethodRouter<S>) -> Self
+    where
+        S: Clone,
+    {
         methods.apply_defaults(self.default_body_limit, self.default_timeout);
         let routes = Arc::make_mut(&mut self.routes);
         if let Some((_, entry)) = routes.routes.iter_mut().find(|(route, _)| route == path) {
@@ -1173,7 +1251,10 @@ impl<S> Router<S> {
     /// This mirrors applying a timeout at a router boundary while keeping the
     /// deadline explicit in the route tree. Streaming routes should be built
     /// outside this subtree (or call [`Router::without_timeout`]).
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    pub fn timeout(mut self, timeout: Duration) -> Self
+    where
+        S: Clone,
+    {
         for (_, entry) in &mut Arc::make_mut(&mut self.routes).routes {
             entry.methods = entry.methods.clone().timeout(timeout);
         }
@@ -1181,7 +1262,10 @@ impl<S> Router<S> {
     }
 
     /// Remove handler deadlines from every currently configured route.
-    pub fn without_timeout(mut self) -> Self {
+    pub fn without_timeout(mut self) -> Self
+    where
+        S: Clone,
+    {
         for (_, entry) in &mut Arc::make_mut(&mut self.routes).routes {
             entry.methods = entry.methods.clone().without_timeout();
         }
@@ -1192,7 +1276,10 @@ impl<S> Router<S> {
     ///
     /// Use [`MethodRouter::body_limit`] when only one method on a route needs
     /// the limit.
-    pub fn body_limit(mut self, limit: usize) -> Self {
+    pub fn body_limit(mut self, limit: usize) -> Self
+    where
+        S: Clone,
+    {
         for (_, entry) in &mut Arc::make_mut(&mut self.routes).routes {
             entry.methods = entry.methods.clone().body_limit(limit);
         }
@@ -1214,6 +1301,9 @@ impl<S> Router<S> {
             }),
             body_limit: None,
             timeout: HandlerTimeout::Inherit,
+            state: None,
+            #[cfg(feature = "cors")]
+            cors: None,
         };
         endpoint.apply_defaults(self.default_body_limit, self.default_timeout);
         self.fallback = Some(endpoint);
@@ -1221,10 +1311,26 @@ impl<S> Router<S> {
     }
 
     /// Prefix every route in `nested` and add it to this router.
-    pub fn nest(mut self, prefix: &str, nested: Router<S>) -> Self {
+    ///
+    /// State bound with [`Router::with_state`] stays on the child routes that
+    /// were configured with it. Unbound child routes use this router's state.
+    /// A nested fallback handles only paths inside `prefix`; a second fallback
+    /// for that same prefix panics. With the `cors` feature, a child CORS
+    /// policy stays on that child's routes and unmatched paths under `prefix`.
+    /// Composition panics when this router already has a CORS policy and the
+    /// child has one too.
+    pub fn nest(mut self, prefix: &str, mut nested: Router<S>) -> Self
+    where
+        S: Clone,
+    {
+        let prefix = join_paths(prefix, "/");
+        seal_bindings(&mut nested);
+        #[cfg(feature = "cors")]
+        self.adopt_cors(&prefix, &mut nested);
+        self.adopt_fallbacks(prefix.clone(), &mut nested);
         for (path, entry) in Arc::unwrap_or_clone(nested.routes).routes {
             let nested_root = path == "/";
-            let path = join_paths(prefix, &path);
+            let path = join_paths(&prefix, &path);
             // A nested root represents the collection resource itself. APIs
             // commonly document that resource without a trailing slash (for
             // example `/api/v1/machines`), while callers that retain a slash
@@ -1235,14 +1341,6 @@ impl<S> Router<S> {
             }
             self = self.route(&path, entry.methods);
         }
-        let body_limit = self.default_body_limit;
-        let timeout = self.default_timeout;
-        if self.fallback.is_none() {
-            self.fallback = nested.fallback.map(|mut fallback| {
-                fallback.apply_defaults(body_limit, timeout);
-                fallback
-            });
-        }
         if self.state.is_none() {
             self.state = nested.state;
         }
@@ -1250,17 +1348,20 @@ impl<S> Router<S> {
     }
 
     /// Merge routes from another router with the same state type.
-    pub fn merge(mut self, other: Router<S>) -> Self {
+    ///
+    /// State and CORS follow [`Router::nest`]. Fallbacks are global, and
+    /// merging two of them panics. A child CORS policy is not promoted to
+    /// this whole router.
+    pub fn merge(mut self, mut other: Router<S>) -> Self
+    where
+        S: Clone,
+    {
+        seal_bindings(&mut other);
+        #[cfg(feature = "cors")]
+        self.adopt_cors("/", &mut other);
+        self.adopt_fallbacks("/".to_owned(), &mut other);
         for (path, entry) in Arc::unwrap_or_clone(other.routes).routes {
             self = self.route(&path, entry.methods);
-        }
-        let body_limit = self.default_body_limit;
-        let timeout = self.default_timeout;
-        if self.fallback.is_none() {
-            self.fallback = other.fallback.map(|mut fallback| {
-                fallback.apply_defaults(body_limit, timeout);
-                fallback
-            });
         }
         if self.state.is_none() {
             self.state = other.state;
@@ -1270,7 +1371,13 @@ impl<S> Router<S> {
 
     #[cfg(feature = "cors")]
     /// Attach a structural CORS policy.
+    ///
+    /// Panics when composition has already bound a CORS policy to a route,
+    /// fallback, or nested prefix.
     pub fn cors(mut self, cors: Cors) -> Self {
+        if has_bound_cors(&self) {
+            panic!("conflicting CORS policy");
+        }
         self.cors = Some(Arc::new(cors));
         self
     }
@@ -1293,38 +1400,43 @@ impl<S> Router<S> {
     {
         #[cfg(feature = "cors")]
         let request_origin = request.headers().get(ORIGIN).cloned();
+        let path = request.uri().path().to_owned();
+        let method = request.method().clone();
+
         #[cfg(feature = "cors")]
-        if let Some(cors) = &self.cors {
-            if request.method() == Method::OPTIONS
-                && request_origin.is_some()
-                && request.headers().contains_key("access-control-request-method")
-            {
-                let cors = cors.clone();
-                let allow = self
-                    .routes
-                    .matcher
-                    .at(request.uri().path())
-                    .ok()
-                    .map(|matched| {
-                        self.routes.routes[*matched.value]
-                            .1
-                            .methods
-                            .allow_header_value()
-                    });
+        if method == Method::OPTIONS
+            && request_origin.is_some()
+            && request.headers().contains_key("access-control-request-method")
+        {
+            let requested = request
+                .headers()
+                .get("access-control-request-method")
+                .and_then(|value| Method::from_bytes(value.as_bytes()).ok());
+            if let Some(cors) = self.preflight_cors(&path, requested.as_ref()) {
+                let allow = self.routes.matcher.at(&path).ok().map(|matched| {
+                    self.routes.routes[*matched.value]
+                        .1
+                        .methods
+                        .allow_header_value()
+                });
                 return Box::pin(async move {
                     cors.preflight_response(request_origin.as_ref(), allow)
                 });
             }
         }
 
-        let path = request.uri().path();
-        let method = request.method();
-        let matched = self.routes.matcher.at(path).ok();
+        #[cfg(feature = "cors")]
+        let chosen_cors;
+        let matched = self.routes.matcher.at(&path).ok();
         let future: HandlerFuture = match matched {
             Some(matched) => {
                 let entry = &self.routes.routes[*matched.value];
-                match entry.1.methods.methods.get(method) {
+                match entry.1.methods.methods.get(&method) {
                     Some(endpoint) => {
+                        #[cfg(feature = "cors")]
+                        {
+                            chosen_cors = endpoint.cors.clone().or_else(|| self.cors.clone());
+                        }
                         let params = RouteParams(
                             matched
                                 .params
@@ -1332,9 +1444,16 @@ impl<S> Router<S> {
                                 .map(|(name, value)| (name.to_owned(), value.to_owned()))
                                 .collect(),
                         );
-                        endpoint.call(request, self.state.clone(), params)
+                        let state = endpoint.state.clone().or_else(|| self.state.clone());
+                        endpoint.call(request, state, params)
                     }
                     None => {
+                        #[cfg(feature = "cors")]
+                        {
+                            chosen_cors = route_cors(&entry.1.methods)
+                                .cloned()
+                                .or_else(|| self.cors.clone());
+                        }
                         let allow = entry.1.methods.allow_header_value();
                         Box::pin(async move {
                             let mut response = response_with_body(
@@ -1347,21 +1466,128 @@ impl<S> Router<S> {
                     }
                 }
             }
-            None => match self.fallback.as_ref() {
+            None => match self.fallback_for(&path) {
                 Some(endpoint) => {
-                    endpoint.call(request, self.state.clone(), RouteParams::default())
+                    #[cfg(feature = "cors")]
+                    {
+                        chosen_cors = endpoint.cors.clone().or_else(|| self.cors.clone());
+                    }
+                    let state = endpoint.state.clone().or_else(|| self.state.clone());
+                    endpoint.call(request, state, RouteParams::default())
                 }
-                None => Box::pin(async { response_with_body(StatusCode::NOT_FOUND, "not found") }),
+                None => {
+                    #[cfg(feature = "cors")]
+                    {
+                        chosen_cors = self.prefix_cors(&path).or_else(|| self.cors.clone());
+                    }
+                    Box::pin(async { response_with_body(StatusCode::NOT_FOUND, "not found") })
+                }
             },
         };
         #[cfg(feature = "cors")]
-        if let Some(cors) = &self.cors {
-            let cors = cors.clone();
+        if let Some(cors) = chosen_cors {
             return Box::pin(
                 async move { cors.apply_response(future.await, request_origin.as_ref()) },
             );
         }
         future
+    }
+
+    fn adopt_fallbacks(&mut self, prefix: String, nested: &mut Router<S>) {
+        let body_limit = self.default_body_limit;
+        let timeout = self.default_timeout;
+        if let Some(mut endpoint) = nested.fallback.take() {
+            endpoint.apply_defaults(body_limit, timeout);
+            self.insert_fallback(prefix.clone(), endpoint);
+        }
+        for scoped in std::mem::take(&mut nested.scoped_fallbacks) {
+            let mut endpoint = scoped.endpoint;
+            endpoint.apply_defaults(body_limit, timeout);
+            self.insert_fallback(join_prefix(&prefix, &scoped.prefix), endpoint);
+        }
+    }
+
+    fn insert_fallback(&mut self, prefix: String, endpoint: Endpoint<S>) {
+        if prefix == "/" {
+            if self.fallback.is_some() {
+                panic!("conflicting router fallback");
+            }
+            self.fallback = Some(endpoint);
+            return;
+        }
+        if self.scoped_fallbacks.iter().any(|scoped| scoped.prefix == prefix) {
+            panic!("conflicting fallback for {prefix}");
+        }
+        self.scoped_fallbacks.push(ScopedFallback { prefix, endpoint });
+    }
+
+    fn fallback_for(&self, path: &str) -> Option<&Endpoint<S>> {
+        let mut best: Option<&ScopedFallback<S>> = None;
+        for scoped in &self.scoped_fallbacks {
+            if path_in_prefix(&scoped.prefix, path)
+                && best.is_none_or(|current| scoped.prefix.len() > current.prefix.len())
+            {
+                best = Some(scoped);
+            }
+        }
+        best.map(|scoped| &scoped.endpoint)
+            .or(self.fallback.as_ref())
+    }
+
+    #[cfg(feature = "cors")]
+    fn adopt_cors(&mut self, prefix: &str, nested: &mut Router<S>) {
+        if self.cors.is_some() && has_any_cors(nested) {
+            panic!("conflicting CORS policy");
+        }
+        if prefix != "/" {
+            if let Some(cors) = nested.cors.clone() {
+                self.insert_scoped_cors(prefix.to_owned(), cors);
+            }
+        }
+        for scoped in std::mem::take(&mut nested.scoped_cors) {
+            self.insert_scoped_cors(join_prefix(prefix, &scoped.prefix), scoped.cors);
+        }
+    }
+
+    #[cfg(feature = "cors")]
+    fn insert_scoped_cors(&mut self, prefix: String, cors: Arc<Cors>) {
+        if prefix == "/" {
+            return;
+        }
+        if self.scoped_cors.iter().any(|scoped| scoped.prefix == prefix) {
+            panic!("conflicting CORS policy");
+        }
+        self.scoped_cors.push(ScopedCors { prefix, cors });
+    }
+
+    #[cfg(feature = "cors")]
+    fn prefix_cors(&self, path: &str) -> Option<Arc<Cors>> {
+        let mut best: Option<&ScopedCors> = None;
+        for scoped in &self.scoped_cors {
+            if path_in_prefix(&scoped.prefix, path)
+                && best.is_none_or(|current| scoped.prefix.len() > current.prefix.len())
+            {
+                best = Some(scoped);
+            }
+        }
+        best.map(|scoped| scoped.cors.clone())
+    }
+
+    #[cfg(feature = "cors")]
+    fn preflight_cors(&self, path: &str, requested: Option<&Method>) -> Option<Arc<Cors>> {
+        if let Ok(matched) = self.routes.matcher.at(path) {
+            let methods = &self.routes.routes[*matched.value].1.methods;
+            if let Some(method) = requested {
+                if let Some(endpoint) = methods.methods.get(method) {
+                    return endpoint.cors.clone().or_else(|| self.cors.clone());
+                }
+            }
+            return route_cors(methods).cloned().or_else(|| self.cors.clone());
+        }
+        if let Some(endpoint) = self.fallback_for(path) {
+            return endpoint.cors.clone().or_else(|| self.cors.clone());
+        }
+        self.prefix_cors(path).or_else(|| self.cors.clone())
     }
 }
 
@@ -1475,6 +1701,94 @@ fn join_paths(prefix: &str, path: &str) -> String {
     } else {
         format!("{prefix}/{path}")
     }
+}
+
+fn join_prefix(outer: &str, inner: &str) -> String {
+    if outer == "/" {
+        return inner.to_owned();
+    }
+    if inner == "/" {
+        return outer.to_owned();
+    }
+    format!("{outer}{inner}")
+}
+
+fn path_in_prefix(prefix: &str, path: &str) -> bool {
+    if prefix == "/" {
+        return true;
+    }
+    path == prefix
+        || (path.starts_with(prefix) && path.as_bytes().get(prefix.len()) == Some(&b'/'))
+}
+
+fn seal_bindings<S: Clone>(router: &mut Router<S>) {
+    let state = router.state.clone();
+    #[cfg(feature = "cors")]
+    let cors = router.cors.clone();
+    for_each_endpoint_mut(router, |endpoint| {
+        if endpoint.state.is_none() {
+            endpoint.state.clone_from(&state);
+        }
+        #[cfg(feature = "cors")]
+        if endpoint.cors.is_none() {
+            endpoint.cors.clone_from(&cors);
+        }
+    });
+}
+
+fn for_each_endpoint_mut<S: Clone>(
+    router: &mut Router<S>,
+    mut visit: impl FnMut(&mut Endpoint<S>),
+) {
+    for (_, entry) in &mut Arc::make_mut(&mut router.routes).routes {
+        for endpoint in entry.methods.methods.values_mut() {
+            visit(endpoint);
+        }
+    }
+    if let Some(endpoint) = router.fallback.as_mut() {
+        visit(endpoint);
+    }
+    for scoped in &mut router.scoped_fallbacks {
+        visit(&mut scoped.endpoint);
+    }
+}
+
+#[cfg(feature = "cors")]
+fn route_cors<S>(methods: &MethodRouter<S>) -> Option<&Arc<Cors>> {
+    let mut found = None;
+    for endpoint in methods.methods.values() {
+        if let Some(cors) = &endpoint.cors {
+            match found {
+                None => found = Some(cors),
+                Some(existing) if Arc::ptr_eq(existing, cors) => {}
+                Some(_) => return None,
+            }
+        }
+    }
+    found
+}
+
+#[cfg(feature = "cors")]
+fn has_any_cors<S>(router: &Router<S>) -> bool {
+    router.cors.is_some() || has_bound_cors(router)
+}
+
+#[cfg(feature = "cors")]
+fn has_bound_cors<S>(router: &Router<S>) -> bool {
+    router
+        .routes
+        .routes
+        .iter()
+        .any(|(_, entry)| entry.methods.methods.values().any(|endpoint| endpoint.cors.is_some()))
+        || router
+            .fallback
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.cors.is_some())
+        || router
+            .scoped_fallbacks
+            .iter()
+            .any(|scoped| scoped.endpoint.cors.is_some())
+        || !router.scoped_cors.is_empty()
 }
 
 /// Typed query extraction, enabled by the `query` feature.
@@ -2626,6 +2940,121 @@ mod tests {
         assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
     }
 
+    fn state_body(router: &Router<String>, path: &str) -> String {
+        let response = block_on(
+            router.call(Request::get(path).body(h12tiny_util::empty_body()).unwrap()),
+        );
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        let body = block_on(response.into_body().collect()).unwrap().to_bytes();
+        String::from_utf8(body.to_vec()).unwrap()
+    }
+
+    fn state_route(label: &'static str) -> Router<String> {
+        Router::new()
+            .route(
+                "/item",
+                get(move |State(state): State<String>| async move { state }),
+            )
+            .with_state(label.to_owned())
+    }
+
+    #[test]
+    fn composition_preserves_state_bound_before_nest_or_merge() {
+        let nested = Router::new()
+            .nest("/a", state_route("state-a"))
+            .nest("/b", state_route("state-b"))
+            .route(
+                "/parent",
+                get(|State(state): State<String>| async move { state }),
+            );
+        assert_eq!(state_body(&nested, "/a/item"), "state-a");
+        assert_eq!(state_body(&nested, "/b/item"), "state-b");
+        assert_eq!(state_body(&nested, "/parent"), "state-a");
+
+        let parent_after = nested.with_state("parent".to_owned());
+        assert_eq!(state_body(&parent_after, "/a/item"), "state-a");
+        assert_eq!(state_body(&parent_after, "/b/item"), "state-b");
+        assert_eq!(state_body(&parent_after, "/parent"), "parent");
+
+        let parent_before = Router::new()
+            .route(
+                "/parent",
+                get(|State(state): State<String>| async move { state }),
+            )
+            .with_state("parent".to_owned())
+            .nest("/a", state_route("state-a"));
+        assert_eq!(state_body(&parent_before, "/parent"), "parent");
+        assert_eq!(state_body(&parent_before, "/a/item"), "state-a");
+
+        let unbound = Router::new()
+            .nest(
+                "/a",
+                Router::new().route(
+                    "/item",
+                    get(|State(state): State<String>| async move { state }),
+                ),
+            )
+            .with_state("later".to_owned());
+        assert_eq!(state_body(&unbound, "/a/item"), "later");
+
+        let merged = Router::new()
+            .merge(state_route("state-a").route(
+                "/a",
+                get(|State(state): State<String>| async move { state }),
+            ))
+            .merge(Router::new().route(
+                "/b",
+                get(|State(state): State<String>| async move { state }),
+            ).with_state("state-b".to_owned()));
+        assert_eq!(state_body(&merged, "/a"), "state-a");
+        assert_eq!(state_body(&merged, "/item"), "state-a");
+        assert_eq!(state_body(&merged, "/b"), "state-b");
+    }
+
+    #[test]
+    fn nested_fallback_stays_inside_its_prefix() {
+        let router = Router::new()
+            .nest(
+                "/api",
+                Router::new()
+                    .nest("/v1", Router::new().fallback(|| async { "inner" }))
+                    .fallback(|| async { "api" }),
+            )
+            .fallback(|| async { "root" });
+
+        for (path, body) in [
+            ("/missing", "root"),
+            ("/api", "api"),
+            ("/api/other", "api"),
+            ("/api/v1", "inner"),
+            ("/api/v1/other", "inner"),
+            ("/apiv1", "root"),
+        ] {
+            let response = block_on(
+                router.call(Request::get(path).body(h12tiny_util::empty_body()).unwrap()),
+            );
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            let bytes = block_on(response.into_body().collect()).unwrap().to_bytes();
+            assert_eq!(&bytes[..], body.as_bytes(), "{path}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "conflicting router fallback")]
+    fn merge_rejects_two_fallbacks() {
+        let _ = Router::<()>::new()
+            .fallback(|| async { "parent" })
+            .merge(Router::new().fallback(|| async { "child" }));
+    }
+
+    #[test]
+    #[should_panic(expected = "conflicting fallback for /api")]
+    fn nest_rejects_two_fallbacks_for_one_prefix() {
+        let _ = Router::<()>::new()
+            .nest("/api", Router::new().fallback(|| async { "one" }))
+            .nest("/api", Router::new().fallback(|| async { "two" }));
+    }
+
     #[test]
     fn production_bounds_are_conservative_and_reject_zero_timeouts() {
         let bounds = RouterBounds::default();
@@ -2694,6 +3123,15 @@ mod tests {
         let response = block_on(
             router.call(
                 Request::post("/missing")
+                    .body(h12tiny_util::bytes_body("1234"))
+                    .unwrap(),
+            ),
+        );
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = block_on(
+            router.call(
+                Request::post("/api/missing")
                     .body(h12tiny_util::bytes_body("1234"))
                     .unwrap(),
             ),
@@ -3200,6 +3638,246 @@ mod tests {
         assert_eq!(wrong_method.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(wrong_method.headers()["access-control-allow-origin"], "https://allowed.example");
         assert_eq!(wrong_method.headers()[http::header::VARY], "Origin");
+    }
+
+    #[cfg(feature = "cors")]
+    #[test]
+    fn nested_cors_covers_its_prefix_and_rejects_a_second_policy() {
+        let child = Router::new()
+            .route("/item", get(|| async { "item" }))
+            .route("/item", post(|| async { "posted" }))
+            .cors(Cors::new().allow_origin("https://child.example"));
+        let router = Router::new()
+            .route("/outside", get(|| async { "out" }))
+            .nest("/api", child);
+
+        let allowed = response_for(
+            &router,
+            Method::GET,
+            "/api/item",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(allowed.status(), StatusCode::OK);
+        assert_eq!(allowed.headers()["access-control-allow-origin"], "https://child.example");
+
+        let blocked = response_for(
+            &router,
+            Method::GET,
+            "/api/item",
+            Some("https://blocked.example"),
+            None,
+        );
+        assert!(blocked.headers().get("access-control-allow-origin").is_none());
+        assert_eq!(blocked.headers()[http::header::VARY], "Origin");
+
+        let wrong_method = response_for(
+            &router,
+            Method::DELETE,
+            "/api/item",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(wrong_method.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(
+            wrong_method.headers()["access-control-allow-origin"],
+            "https://child.example"
+        );
+
+        let missing = response_for(
+            &router,
+            Method::GET,
+            "/api/missing",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(missing.headers()["access-control-allow-origin"], "https://child.example");
+
+        let outside = response_for(
+            &router,
+            Method::GET,
+            "/outside",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(outside.status(), StatusCode::OK);
+        assert!(outside.headers().get("access-control-allow-origin").is_none());
+        assert!(outside.headers().get(http::header::VARY).is_none());
+
+        let outside_missing = response_for(
+            &router,
+            Method::GET,
+            "/missing",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(outside_missing.status(), StatusCode::NOT_FOUND);
+        assert!(outside_missing.headers().get("access-control-allow-origin").is_none());
+
+        let preflight = response_for(
+            &router,
+            Method::OPTIONS,
+            "/api/item",
+            Some("https://child.example"),
+            Some("POST"),
+        );
+        assert_eq!(preflight.status(), StatusCode::NO_CONTENT);
+        assert_eq!(preflight.headers()["access-control-allow-origin"], "https://child.example");
+        assert_eq!(preflight.headers()[ALLOW], "GET, POST");
+
+        let outside_preflight = response_for(
+            &router,
+            Method::OPTIONS,
+            "/outside",
+            Some("https://child.example"),
+            Some("GET"),
+        );
+        assert_eq!(outside_preflight.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+        let inherited = Router::new()
+            .cors(Cors::new().allow_origin("https://parent.example"))
+            .nest("/api", Router::new().route("/item", get(|| async { "item" })));
+        let response = response_for(
+            &inherited,
+            Method::GET,
+            "/api/item",
+            Some("https://parent.example"),
+            None,
+        );
+        assert_eq!(response.headers()["access-control-allow-origin"], "https://parent.example");
+
+        let siblings = Router::new()
+            .nest(
+                "/a",
+                Router::new()
+                    .route("/item", get(|| async { "a" }))
+                    .cors(Cors::new().allow_origin("https://a.example")),
+            )
+            .nest(
+                "/b",
+                Router::new()
+                    .route("/item", get(|| async { "b" }))
+                    .cors(Cors::new().allow_origin("https://b.example")),
+            );
+        let a_missing = response_for(
+            &siblings,
+            Method::GET,
+            "/a/missing",
+            Some("https://a.example"),
+            None,
+        );
+        assert_eq!(a_missing.headers()["access-control-allow-origin"], "https://a.example");
+        let b_item = response_for(
+            &siblings,
+            Method::GET,
+            "/b/item",
+            Some("https://b.example"),
+            None,
+        );
+        assert_eq!(b_item.headers()["access-control-allow-origin"], "https://b.example");
+        let b_from_a = response_for(
+            &siblings,
+            Method::GET,
+            "/b/item",
+            Some("https://a.example"),
+            None,
+        );
+        assert!(b_from_a.headers().get("access-control-allow-origin").is_none());
+    }
+
+    #[cfg(feature = "cors")]
+    #[test]
+    #[should_panic(expected = "conflicting CORS policy")]
+    fn nest_rejects_a_parent_and_child_cors_policy() {
+        let _ = Router::<()>::new()
+            .cors(Cors::new().allow_origin("https://parent.example"))
+            .nest(
+                "/api",
+                Router::new()
+                    .route("/item", get(|| async { "item" }))
+                    .cors(Cors::new().allow_origin("https://child.example")),
+            );
+    }
+
+    #[cfg(feature = "cors")]
+    #[test]
+    fn merged_cors_stays_on_the_child_route() {
+        let router = Router::new()
+            .route("/plain", get(|| async { "plain" }))
+            .merge(
+                Router::new()
+                    .route("/child", get(|| async { "child" }))
+                    .cors(Cors::new().allow_origin("https://child.example")),
+            );
+
+        let child = response_for(
+            &router,
+            Method::GET,
+            "/child",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(child.status(), StatusCode::OK);
+        assert_eq!(child.headers()["access-control-allow-origin"], "https://child.example");
+
+        let rejected = response_for(
+            &router,
+            Method::POST,
+            "/child",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(rejected.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(rejected.headers()["access-control-allow-origin"], "https://child.example");
+
+        let plain = response_for(
+            &router,
+            Method::GET,
+            "/plain",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(plain.status(), StatusCode::OK);
+        assert!(plain.headers().get("access-control-allow-origin").is_none());
+
+        let missing = response_for(
+            &router,
+            Method::GET,
+            "/missing",
+            Some("https://child.example"),
+            None,
+        );
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert!(missing.headers().get("access-control-allow-origin").is_none());
+    }
+
+    #[cfg(feature = "cors")]
+    #[test]
+    #[should_panic(expected = "conflicting CORS policy")]
+    fn merge_rejects_two_cors_policies() {
+        let _ = Router::<()>::new()
+            .route("/plain", get(|| async { "plain" }))
+            .cors(Cors::new())
+            .merge(
+                Router::new()
+                    .route("/child", get(|| async { "child" }))
+                    .cors(Cors::new()),
+            );
+    }
+
+    #[cfg(feature = "cors")]
+    #[test]
+    #[should_panic(expected = "conflicting CORS policy")]
+    fn cors_after_a_nested_policy_is_rejected() {
+        let _ = Router::<()>::new()
+            .nest(
+                "/api",
+                Router::new()
+                    .route("/item", get(|| async { "item" }))
+                    .cors(Cors::new()),
+            )
+            .cors(Cors::new());
     }
 
     #[test]

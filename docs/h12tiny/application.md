@@ -33,10 +33,19 @@ method returns 405 with an `Allow` header listing the route's registered
 methods. Router clones share an immutable route table and matcher; builder
 changes to a clone leave the original router's routes intact.
 
-`nest` and `merge` currently flatten child routes and retain one state value:
-an existing parent state wins, otherwise the first configured child supplies it.
-Child CORS is not retained, and an adopted child fallback becomes global.
-These composition limits are tracked in [the backlog](../TODO.md).
+`nest` and `merge` keep state already bound with `with_state`. Routes left
+unbound use the assembled router's state, including a state attached after
+composition. A later `with_state` does not replace a binding composition
+already captured. When the parent has no state, the first configured child
+supplies the state inherited by unbound routes. A nested fallback applies only
+under its prefix, and the longest matching prefix wins. `merge` keeps one
+global fallback and panics when both routers already have one. A second
+fallback for the same nested prefix also panics. A child CORS policy stays on
+that child's routes and, for `nest`, on unmatched paths under the child's
+prefix. It is not installed as the parent policy. `nest` and `merge` panic
+when the parent already has a CORS policy and the child has one too. Calling
+`cors` after a child policy is already bound panics as well. A parent policy
+still covers nested routes that did not set their own.
 
 Optional features add JSON and query extraction, SSE event
 framing and idle-only comment keepalives, structural CORS, raw upgrade access,

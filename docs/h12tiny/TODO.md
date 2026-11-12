@@ -20,16 +20,6 @@ Next: 27
 - **Fix with:** `single-source-of-truth`
 - **Effort:** S (hours)
 
-### H12T-20 · P2 · Router composition silently replaces configured child state
-
-- **Area:** Architecture
-- **Where:** `crates/h12tiny-web/src/lib.rs:1147`, `:1224`, `:1253`, `:1335`.
-- **Problem:** `nest` and `merge` flatten endpoints into the parent but copy child state only when the parent has none. Subsequent configured children lose their state, and every endpoint receives the one retained parent value. A public-API, in-memory check nested routers configured with `state-a` and `state-b` under `/a` and `/b`; both returned HTTP 200 with `state-a`. The API describes shared state but does not reject or document these conflicting bindings. The same composition code also drops child CORS and promotes a child fallback globally; those policy behaviors were source-inspected, not separately reproduced, and belong in the same composition contract decision.
-- **Recommendation:** Preserve state bound to child endpoints, or make state binding a single explicit construction step that rejects conflicting configured routers. Define nested fallback and CORS ownership alongside state so composition cannot silently discard a supplied policy. Verify differently configured children through both `nest` and `merge`.
-- **Fix with:** `api-surface-and-module-boundaries`
-- **Effort:** M (days)
-- **Design:** [Router composition ownership](rfc/H12T-20-router-composition.md).
-
 ### H12T-21 · P2 · Blocking chunk decoding loses framing progress after a read timeout
 
 - **Area:** Data
