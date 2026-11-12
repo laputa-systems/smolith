@@ -10,15 +10,6 @@ Next: 14
 - **Fix with:** `stuff-registries`
 - **Effort:** S
 
-### SMOL-10 · P2 · Broadcast admission changes leave pending senders asleep
-
-- **Area:** Concurrency
-- **Where:** `crates/async-broadcast/src/lib.rs:274`, `crates/async-broadcast/src/lib.rs:394`, `crates/async-broadcast/src/lib.rs:434`, `crates/async-broadcast/src/lib.rs:631`, `crates/async-broadcast/src/lib.rs:1748`, `crates/async-broadcast/src/lib.rs:1896`
-- **Problem:** A blocked broadcast waits on `send_ops`, but four public transitions change its result without notifying that event: adding the first active receiver with `Sender::new_receiver()`, increasing a full channel's capacity, enabling overflow, or disabling `await_active` while all receivers are inactive. Counting-waker probes registered a pending send before each transition. All four delivered zero wakes although a forced repoll immediately returned Ready. The control, `InactiveReceiver::activate_cloned()`, delivered one wake. An executor can therefore leave a now-ready sender asleep indefinitely.
-- **Recommendation:** Centralize admission-change notifications across Sender, Receiver, and InactiveReceiver. Notify when a transition permits progress or yields an error, dispatch outside the channel mutex, and retain chaining for multiple waiting senders. Add a public-API table test for the four transitions using a counting waker.
-- **Fix with:** `lifecycle-concurrency`
-- **Effort:** M
-
 ### SMOL-11 · P2 · Floating-point range helpers return excluded endpoints
 
 - **Area:** Types

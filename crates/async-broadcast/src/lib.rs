@@ -334,6 +334,7 @@ impl<T> Inner<T> {
     /// `new_cap` is less than the number of messages in the channel, the oldest messages will be
     /// dropped to shrink the channel.
     fn set_capacity(&mut self, new_cap: usize) {
+        let blocked = self.queue.len() >= self.capacity && !self.overflow;
         self.capacity = new_cap;
         if new_cap > self.queue.capacity() {
             let diff = new_cap - self.queue.capacity();
@@ -345,6 +346,33 @@ impl<T> Inner<T> {
             let diff = self.queue.len() - new_cap;
             self.queue.drain(0..diff);
             self.head_pos += diff as u64;
+        }
+        if blocked && self.queue.len() < self.capacity {
+            self.queue_send(1);
+        }
+    }
+
+    fn set_overflow_flag(&mut self, overflow: bool) {
+        let opened = overflow && !self.overflow && self.queue.len() >= self.capacity;
+        self.overflow = overflow;
+        if opened {
+            self.queue_send(1);
+        }
+    }
+
+    fn set_await_active_flag(&mut self, await_active: bool) {
+        let reject = self.await_active && !await_active && self.receiver_count == 0;
+        self.await_active = await_active;
+        if reject {
+            self.queue_send(usize::MAX);
+        }
+    }
+
+    fn add_receiver(&mut self) {
+        let first = self.receiver_count == 0;
+        self.receiver_count += 1;
+        if first {
+            self.queue_send(1);
         }
     }
 
@@ -454,7 +482,7 @@ impl<T> Sender<T> {
     /// assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
     /// ```
     pub fn set_overflow(&mut self, overflow: bool) {
-        lock(&self.inner).overflow = overflow;
+        lock(&self.inner).set_overflow_flag(overflow);
     }
 
     /// If sender will wait for active receivers.
@@ -494,7 +522,7 @@ impl<T> Sender<T> {
     /// # });
     /// ```
     pub fn set_await_active(&mut self, await_active: bool) {
-        lock(&self.inner).await_active = await_active;
+        lock(&self.inner).set_await_active_flag(await_active);
     }
 
     /// Closes the channel.
@@ -692,7 +720,7 @@ impl<T> Sender<T> {
     /// ```
     pub fn new_receiver(&self) -> Receiver<T> {
         let mut inner = lock(&self.inner);
-        inner.receiver_count += 1;
+        inner.add_receiver();
         Receiver {
             inner: self.inner.clone(),
             pos: inner.head_pos + inner.queue.len() as u64,
@@ -971,7 +999,7 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
     /// ```
     pub fn set_overflow(&mut self, overflow: bool) {
-        lock(&self.inner).overflow = overflow;
+        lock(&self.inner).set_overflow_flag(overflow);
     }
 
     /// If sender will wait for active receivers.
@@ -1011,7 +1039,7 @@ impl<T> Receiver<T> {
     /// # });
     /// ```
     pub fn set_await_active(&mut self, await_active: bool) {
-        lock(&self.inner).await_active = await_active;
+        lock(&self.inner).set_await_active_flag(await_active);
     }
 
     /// Closes the channel.
@@ -1420,7 +1448,7 @@ impl<T: Clone> Receiver<T> {
     /// ```
     pub fn new_receiver(&self) -> Self {
         let mut inner = lock(&self.inner);
-        inner.receiver_count += 1;
+        inner.add_receiver();
         Receiver {
             inner: self.inner.clone(),
             pos: inner.head_pos + inner.queue.len() as u64,
@@ -1811,8 +1839,8 @@ impl<T: Clone> EventListenerFuture for SendInner<'_, T> {
                 Ok(msg) => {
                     let mut inner = lock(inner);
 
-                    if inner.queue.len() < inner.capacity {
-                        // Not full still, so notify the next awaiting sender.
+                    if inner.queue.len() < inner.capacity || inner.overflow {
+                        // Room remains, or overflow still accepts sends, so wake the next sender.
                         inner.queue_send(1);
                     }
 
@@ -1997,7 +2025,7 @@ impl<T> InactiveReceiver<T> {
     ///
     /// See [`Receiver::set_overflow`] documentation for examples.
     pub fn set_overflow(&mut self, overflow: bool) {
-        lock(&self.inner).overflow = overflow;
+        lock(&self.inner).set_overflow_flag(overflow);
     }
 
     /// If sender will wait for active receivers.
@@ -2038,7 +2066,7 @@ impl<T> InactiveReceiver<T> {
     /// # });
     /// ```
     pub fn set_await_active(&mut self, await_active: bool) {
-        lock(&self.inner).await_active = await_active;
+        lock(&self.inner).set_await_active_flag(await_active);
     }
 
     /// Closes the channel.
