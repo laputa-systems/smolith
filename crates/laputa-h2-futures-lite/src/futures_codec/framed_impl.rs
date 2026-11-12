@@ -146,7 +146,7 @@ where
             // get a spurious 0 that looks like EOF
             state.buffer.reserve(1);
 
-            // This undoes the optimization tokio AsyncRead tries to achieve.
+            // Zero spare capacity so a short read cannot observe uninitialized bytes.
             use bytes::BufMut;
             use std::mem::MaybeUninit;
 

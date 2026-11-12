@@ -16,10 +16,12 @@
 //! Extensions are stored in the `Extensions` map of a request or response. You can access them using:
 //!
 //! ```rust
-//! # let response = http::Response::new(());
+//! # #[cfg(any(feature = "http1", feature = "ffi"))]
+//! # fn check(response: &http::Response<()>) {
 //! if let Some(ext) = response.extensions().get::<hyper::ext::ReasonPhrase>() {
-//!     // use the extension
+//!     let _ = ext;
 //! }
+//! # }
 //! ```
 //!
 //! # Extension Groups

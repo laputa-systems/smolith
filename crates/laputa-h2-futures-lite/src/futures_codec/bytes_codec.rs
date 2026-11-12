@@ -8,39 +8,6 @@ use std::io;
 ///
 /// [`Decoder`]: crate::codec::Decoder
 /// [`Encoder`]: crate::codec::Encoder
-///
-/// # Example
-///
-/// Turn an [`AsyncRead`] into a stream of `Result<`[`BytesMut`]`, `[`Error`]`>`.
-///
-/// [`AsyncRead`]: futures_io::AsyncRead
-/// [`BytesMut`]: bytes::BytesMut
-/// [`Error`]: std::io::Error
-///
-/// ```
-/// # mod hidden {
-/// # #[allow(unused_imports)]
-/// use tokio::fs::File;
-/// # }
-/// use futures_io::AsyncRead;
-/// use tokio_util::codec::{FramedRead, BytesCodec};
-///
-/// # enum File {}
-/// # impl File {
-/// #     async fn open(_name: &str) -> Result<impl AsyncRead, std::io::Error> {
-/// #         use std::io::Cursor;
-/// #         Ok(Cursor::new(vec![0, 1, 2, 3, 4, 5]))
-/// #     }
-/// # }
-/// #
-/// # #[tokio::main(core_threads = 1)]
-/// # async fn main() -> Result<(), std::io::Error> {
-/// let my_async_read = File::open("filename.txt").await?;
-/// let my_stream_of_bytes = FramedRead::new(my_async_read, BytesCodec::new());
-/// # Ok(())
-/// # }
-/// ```
-///
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub struct BytesCodec(());
 

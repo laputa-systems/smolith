@@ -75,35 +75,8 @@ pub trait Decoder {
     /// `decode`. Failing to do so leads to inefficiency.
     ///
     /// For example, if frames have a fixed length, or if the length of the
-    /// current frame is known from a header, a possible buffer management
-    /// strategy is:
-    ///
-    /// ```no_run
-    /// # use std::io;
-    /// #
-    /// # use bytes::BytesMut;
-    /// # use tokio_util::codec::Decoder;
-    /// #
-    /// # struct MyCodec;
-    /// #
-    /// impl Decoder for MyCodec {
-    ///     // ...
-    ///     # type Item = BytesMut;
-    ///     # type Error = io::Error;
-    ///
-    ///     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-    ///         // ...
-    ///
-    ///         // Reserve enough to complete decoding of the current frame.
-    ///         let current_frame_len: usize = 1000; // Example.
-    ///         // And to start decoding the next frame.
-    ///         let next_frame_header_len: usize = 10; // Example.
-    ///         src.reserve(current_frame_len + next_frame_header_len);
-    ///
-    ///         return Ok(None);
-    ///     }
-    /// }
-    /// ```
+    /// current frame is known from a header, reserve enough bytes for the
+    /// current frame and the start of the next one.
     ///
     /// An optimal buffer management strategy minimizes reallocations and
     /// over-allocations.
@@ -153,7 +126,7 @@ pub trait Decoder {
     /// calling `split` on the [`Framed`] returned by this method, which will
     /// break them into separate objects, allowing them to interact more easily.
     ///
-    /// [`Stream`]: tokio::stream::Stream
+    /// [`Stream`]: futures_core::stream::Stream
     /// [`Sink`]: futures_sink::Sink
     /// [`Framed`]: crate::codec::Framed
     fn framed<T: AsyncRead + AsyncWrite + Sized>(self, io: T) -> Framed<T, Self>

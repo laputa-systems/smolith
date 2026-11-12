@@ -65,39 +65,28 @@
 //!
 //! ```no_run
 //! use h2::server;
+//! use futures_io::{AsyncRead, AsyncWrite};
 //! use http::{Response, StatusCode};
-//! use tokio::net::TcpListener;
 //!
-//! #[tokio::main]
-//! pub async fn main() {
-//!     let mut listener = TcpListener::bind("127.0.0.1:5928").await.unwrap();
+//! async fn serve<T>(socket: T)
+//! where
+//!     T: AsyncRead + AsyncWrite + Unpin,
+//! {
+//!     // Start the HTTP/2 connection handshake.
+//!     let mut h2 = server::handshake(socket).await.unwrap();
+//!     // Accept all inbound HTTP/2 streams sent over the connection.
+//!     while let Some(request) = h2.accept().await {
+//!         let (request, mut respond) = request.unwrap();
+//!         println!("Received request: {:?}", request);
 //!
-//!     // Accept all incoming TCP connections.
-//!     loop {
-//!         if let Ok((socket, _peer_addr)) = listener.accept().await {
-//!             // Spawn a new task to process each connection.
-//!             tokio::spawn(async {
-//!                 // Start the HTTP/2 connection handshake
-//!                 let mut h2 = server::handshake(socket).await.unwrap();
-//!                 // Accept all inbound HTTP/2 streams sent over the
-//!                 // connection.
-//!                 while let Some(request) = h2.accept().await {
-//!                     let (request, mut respond) = request.unwrap();
-//!                     println!("Received request: {:?}", request);
+//!         // Build a response with no body.
+//!         let response = Response::builder()
+//!             .status(StatusCode::OK)
+//!             .body(())
+//!             .unwrap();
 //!
-//!                     // Build a response with no body
-//!                     let response = Response::builder()
-//!                         .status(StatusCode::OK)
-//!                         .body(())
-//!                         .unwrap();
-//!
-//!                     // Send the response back to the client
-//!                     respond.send_response(response, true)
-//!                         .unwrap();
-//!                 }
-//!
-//!             });
-//!         }
+//!         // Send the response back to the client.
+//!         respond.send_response(response, true).unwrap();
 //!     }
 //! }
 //! ```
@@ -113,7 +102,7 @@
 //! [`http::Request<RecvStream>`]: ../struct.RecvStream.html
 //! [`RecvStream`]: ../struct.RecvStream.html
 //! [`SendStream`]: ../struct.SendStream.html
-//! [`TcpListener`]: https://docs.rs/tokio-core/0.1/tokio_core/net/struct.TcpListener.html
+
 
 use crate::codec::{Codec, UserError};
 use crate::frame::{self, Pseudo, PushPromiseHeaderError, Reason, Settings, StreamId};
@@ -182,11 +171,10 @@ pub struct Handshake<T, B: Buf = Bytes> {
 /// # async fn doc<T: AsyncRead + AsyncWrite + Unpin>(my_io: T) {
 /// let mut server = server::handshake(my_io).await.unwrap();
 /// while let Some(request) = server.accept().await {
-///     tokio::spawn(async move {
-///         let (request, respond) = request.unwrap();
-///         // Process the request and send the response back to the client
-///         // using `respond`.
-///     });
+///     let (request, respond) = request.unwrap();
+///     // Process the request and send the response back to the client
+///     // using `respond`.
+///     let _ = (request, respond);
 /// }
 /// # }
 /// #

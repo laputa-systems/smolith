@@ -1,6 +1,6 @@
 //! Provides a timer trait with timer-like functions.
 //!
-//! Example using tokio timer:
+//! Example using `smol::Timer`:
 //! ```rust
 //! use std::{
 //!     future::Future,
@@ -9,52 +9,51 @@
 //!     time::{Duration, Instant},
 //! };
 //!
+//! use hyper::rt::{Sleep, Timer};
 //! use pin_project_lite::pin_project;
-//! use hyper::rt::{Timer, Sleep};
 //!
 //! #[derive(Clone, Debug)]
-//! pub struct TokioTimer;
+//! pub struct SmolTimer;
 //!
-//! impl Timer for TokioTimer {
+//! impl Timer for SmolTimer {
 //!     fn sleep(&self, duration: Duration) -> Pin<Box<dyn Sleep>> {
-//!         Box::pin(TokioSleep {
+//!         Box::pin(SmolSleep {
 //!             inner: smol::Timer::after(duration),
 //!         })
 //!     }
 //!
 //!     fn sleep_until(&self, deadline: Instant) -> Pin<Box<dyn Sleep>> {
-//!         Box::pin(TokioSleep {
-//!             inner: tokio::time::sleep_until(deadline.into()),
+//!         Box::pin(SmolSleep {
+//!             inner: smol::Timer::at(deadline),
 //!         })
 //!     }
 //!
 //!     fn reset(&self, sleep: &mut Pin<Box<dyn Sleep>>, new_deadline: Instant) {
-//!         if let Some(sleep) = sleep.as_mut().downcast_mut_pin::<TokioSleep>() {
-//!             sleep.reset(new_deadline.into())
+//!         if let Some(sleep) = sleep.as_mut().downcast_mut_pin::<SmolSleep>() {
+//!             sleep.reset(new_deadline);
 //!         }
 //!     }
 //! }
 //!
 //! pin_project! {
-//!     pub(crate) struct TokioSleep {
-//!         #[pin]
-//!         pub(crate) inner: tokio::time::Sleep,
+//!     pub struct SmolSleep {
+//!         inner: smol::Timer,
 //!     }
 //! }
 //!
-//! impl Future for TokioSleep {
+//! impl Future for SmolSleep {
 //!     type Output = ();
 //!
 //!     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//!         self.project().inner.poll(cx)
+//!         Pin::new(self.project().inner).poll(cx).map(|_| ())
 //!     }
 //! }
 //!
-//! impl Sleep for TokioSleep {}
+//! impl Sleep for SmolSleep {}
 //!
-//! impl TokioSleep {
+//! impl SmolSleep {
 //!     pub fn reset(self: Pin<&mut Self>, deadline: Instant) {
-//!         self.project().inner.as_mut().reset(deadline.into());
+//!         self.project().inner.set_at(deadline);
 //!     }
 //! }
 //! ```

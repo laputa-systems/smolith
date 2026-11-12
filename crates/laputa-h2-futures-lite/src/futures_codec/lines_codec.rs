@@ -71,20 +71,6 @@ impl LinesCodec {
     }
 
     /// Returns the maximum line length when decoding.
-    ///
-    /// ```
-    /// use std::usize;
-    /// use tokio_util::codec::LinesCodec;
-    ///
-    /// let codec = LinesCodec::new();
-    /// assert_eq!(codec.max_length(), usize::MAX);
-    /// ```
-    /// ```
-    /// use tokio_util::codec::LinesCodec;
-    ///
-    /// let codec = LinesCodec::new_with_max_length(256);
-    /// assert_eq!(codec.max_length(), 256);
-    /// ```
     pub fn max_length(&self) -> usize {
         self.max_length
     }

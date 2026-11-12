@@ -30,15 +30,15 @@ pub use self::timer::{Sleep, Timer};
 /// # use hyper::rt::Executor;
 /// # use std::future::Future;
 /// #[derive(Clone)]
-/// struct TokioExecutor;
+/// struct SmolExecutor;
 ///
-/// impl<F> Executor<F> for TokioExecutor
+/// impl<F> Executor<F> for SmolExecutor
 /// where
 ///     F: Future + Send + 'static,
 ///     F::Output: Send + 'static,
 /// {
 ///     fn execute(&self, future: F) {
-///         tokio::spawn(future);
+///         smol::spawn(future).detach();
 ///     }
 /// }
 /// ```

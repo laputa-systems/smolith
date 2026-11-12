@@ -68,18 +68,16 @@
 //!
 //! use h2::client;
 //!
+//! use futures_io::{AsyncRead, AsyncWrite};
 //! use http::{Request, Method};
 //! use std::error::Error;
-//! use tokio::net::TcpStream;
 //!
-//! #[tokio::main]
-//! pub async fn main() -> Result<(), Box<dyn Error>> {
-//!     // Establish TCP connection to the server.
-//!     let tcp = TcpStream::connect("127.0.0.1:5928").await?;
-//!     let (h2, connection) = client::handshake(tcp).await?;
-//!     tokio::spawn(async move {
-//!         connection.await.unwrap();
-//!     });
+//! async fn request<T>(io: T) -> Result<(), Box<dyn Error>>
+//! where
+//!     T: AsyncRead + AsyncWrite + Unpin,
+//! {
+//!     let (h2, connection) = client::handshake(io).await?;
+//!     // Drive `connection` on the caller's executor.
 //!
 //!     let mut h2 = h2.ready().await?;
 //!     // Prepare the HTTP request to send to the server.
@@ -113,11 +111,11 @@
 //!         let _ = flow_control.release_capacity(chunk.len());
 //!     }
 //!
+//!     drop(connection);
 //!     Ok(())
 //! }
 //! ```
 //!
-//! [`TcpStream`]: https://docs.rs/tokio-core/0.1/tokio_core/net/struct.TcpStream.html
 //! [`handshake`]: fn.handshake.html
 //! [executor]: https://docs.rs/futures/0.1/futures/future/trait.Executor.html
 //! [`SendRequest`]: struct.SendRequest.html
@@ -215,14 +213,12 @@ pub struct ReadySendRequest<B: Buf> {
 /// # use h2::client::*;
 /// #
 /// # async fn doc<T>(my_io: T) -> Result<(), h2::Error>
-/// # where T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+/// # where T: AsyncRead + AsyncWrite + Unpin,
 /// # {
 ///     let (send_request, connection) = client::handshake(my_io).await?;
-///     // Submit the connection handle to an executor.
-///     tokio::spawn(async { connection.await.expect("connection failed"); });
-///
-///     // Now, use `send_request` to initialize HTTP/2 streams.
-///     // ...
+///     // Drive `connection` on the caller's executor. `send_request` makes
+///     // progress only while `connection` is polled.
+///     let _ = (send_request, connection);
 /// # Ok(())
 /// # }
 /// #

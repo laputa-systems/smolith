@@ -11,7 +11,7 @@
 //!
 //! [`AsyncRead`]: futures_io::AsyncRead
 //! [`AsyncWrite`]: futures_io::AsyncWrite
-//! [`Stream`]: tokio::stream::Stream
+//! [`Stream`]: futures_core::stream::Stream
 //! [`Sink`]: futures_sink::Sink
 
 use bytes::Buf;
