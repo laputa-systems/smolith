@@ -103,14 +103,12 @@ mod tests {
       let mut payload = data[..*len].to_vec();
       let mask: [u8; 4] = fastrand::u32(..).to_ne_bytes();
       unmask(&mut payload, mask);
-      if *len > 0 {
-        assert_ne!(
-          payload,
-          &data[..*len],
-          "masked data should differ at len={}",
-          len
-        );
-      }
+      let masked = data[..*len]
+        .iter()
+        .enumerate()
+        .map(|(i, byte)| byte ^ mask[i & 3])
+        .collect::<Vec<_>>();
+      assert_eq!(payload, masked, "mask failed at len={}", len);
       unmask(&mut payload, mask);
       assert_eq!(payload, &data[..*len], "round-trip failed at len={}", len);
     }
