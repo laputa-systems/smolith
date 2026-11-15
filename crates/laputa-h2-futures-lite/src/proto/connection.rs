@@ -339,7 +339,7 @@ where
         // order to placate the borrow checker — `self` is mutably borrowed by
         // `poll2`, which means that we can't borrow `self.span` to enter it.
         // The clone is just an atomic ref bump.
-        let span = self.inner.span;
+        let span = self.inner.span.clone();
         let _e = span.enter();
         let span = tracing::trace_span!("poll");
         let _e = span.enter();

@@ -393,7 +393,7 @@ where
         let state =
             Handshaking::Flushing(Flush::new(codec).instrument(tracing::trace_span!("flush")));
 
-        let _ = entered;
+        drop(entered);
 
         Handshake {
             builder,
@@ -1477,7 +1477,7 @@ where
     type Output = Result<Connection<T, B>, crate::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let span = self.span; // XXX(eliza): T_T
+        let span = self.span.clone(); // XXX(eliza): T_T
         let _e = span.enter();
         tracing::trace!(state = ?self.state);
 
