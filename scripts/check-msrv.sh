@@ -36,7 +36,17 @@ check() {
         exit 1
     fi
     ensure_toolchain "$version.0"
-    (cd / && cargo "+$version.0" check --locked --manifest-path "$manifest" --all-features)
+    case "$manifest" in
+        *laputa-hyper-futures-lite*)
+            # The crate's ffi and tracing features are explicitly unstable and
+            # compile_error without the corresponding RUSTFLAGS cfg, so
+            # --all-features can never succeed. Check the stable surface.
+            (cd / && cargo "+$version.0" check --locked --manifest-path "$manifest" --features full)
+            ;;
+        *)
+            (cd / && cargo "+$version.0" check --locked --manifest-path "$manifest" --all-features)
+            ;;
+    esac
 }
 
 metadata=$(cd / && cargo metadata --no-deps --format-version 1 --manifest-path "$root/Cargo.toml")
