@@ -637,7 +637,7 @@ impl Pseudo {
     /// Whether it has status 1xx
     pub(crate) fn is_informational(&self) -> bool {
         self.status
-            .map_or(false, |status| status.is_informational())
+            .is_some_and(|status| status.is_informational())
     }
 }
 
@@ -1245,12 +1245,11 @@ mod test {
         let num_headers = 25_000;
 
         // Build the HPACK block
-        let mut hpack = Vec::new();
-
-        // Pseudo-headers
-        hpack.push(0x82u8); // :method GET (static index 2)
-        hpack.push(0x86); // :scheme http (static index 6)
-        hpack.push(0x84); // :path / (static index 4)
+        let mut hpack = vec![
+            0x82u8, // :method GET (static index 2)
+            0x86, // :scheme http (static index 6)
+            0x84, // :path / (static index 4)
+        ];
 
         // :authority "localhost" — literal with incremental indexing
         hpack.push(0x41); // literal with indexing, name index 1 (= ":authority")

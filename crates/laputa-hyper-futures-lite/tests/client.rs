@@ -1,4 +1,3 @@
-#![deny(warnings)]
 #![warn(rust_2018_idioms)]
 
 use std::convert::Infallible;
@@ -2010,7 +2009,7 @@ mod conn {
             sock.set_write_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             let mut buf = [0; 4096];
-            sock.read(&mut buf).expect("read 1");
+            let _ = sock.read(&mut buf).expect("read 1");
             sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
 
@@ -2062,7 +2061,7 @@ mod conn {
             sock.set_write_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             let mut buf = [0; 4096];
-            sock.read(&mut buf).expect("read 1");
+            let _ = sock.read(&mut buf).expect("read 1");
             sock.write_all(
                 b"\
                 HTTP/1.1 101 Switching Protocols\r\n\
@@ -2147,7 +2146,7 @@ mod conn {
             sock.set_write_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             let mut buf = [0; 4096];
-            sock.read(&mut buf).expect("read 1");
+            let _ = sock.read(&mut buf).expect("read 1");
             sock.write_all(
                 b"\
                 HTTP/1.1 200 OK\r\n\
@@ -2235,7 +2234,7 @@ mod conn {
             sock.set_write_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             let mut buf = [0; 4096];
-            sock.read(&mut buf).expect("read 1");
+            let _ = sock.read(&mut buf).expect("read 1");
             sock.write_all(
                 b"\
                 HTTP/1.1 100 Continue\r\n\
@@ -2291,7 +2290,7 @@ mod conn {
         thread::spawn(move || {
             let mut sock = server.accept().unwrap().0;
             let mut buf = [0; 1024];
-            sock.read(&mut buf).unwrap();
+            let _ = sock.read(&mut buf).unwrap();
             sock.write_all(b"HTTP/1.1 200 OK\r\nX-Long: ").unwrap();
             sock.write_all(&[b'a'; 1000]).unwrap();
             sock.write_all(b"\r\n\r\n").unwrap();
@@ -2326,7 +2325,7 @@ mod conn {
         thread::spawn(move || {
             let mut sock = server.accept().unwrap().0;
             let mut buf = [0; 1024];
-            sock.read(&mut buf).unwrap();
+            let _ = sock.read(&mut buf).unwrap();
             sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
         });
@@ -2365,7 +2364,7 @@ mod conn {
             sock.set_write_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             let mut buf = [0; 4096];
-            sock.read(&mut buf).expect("read 1");
+            let _ = sock.read(&mut buf).expect("read 1");
             sock.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").unwrap();
             sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
                 .unwrap();
@@ -2428,14 +2427,14 @@ mod conn {
 
             // use the connection once
             let mut fut1 = std::pin::pin!(client.send_request(http::Request::new(Empty::new())));
-            let _res1 = future::poll_fn(|cx| loop {
+            let _res1 = future::poll_fn(|cx| {
                 if let Poll::Ready(res) = fut1.as_mut().poll(cx) {
                     return Poll::Ready(res);
                 }
-                return match Pin::new(&mut conn).poll(cx) {
+                match Pin::new(&mut conn).poll(cx) {
                     Poll::Ready(_) => panic!("ruh roh"),
                     Poll::Pending => Poll::Pending,
-                };
+                }
             })
             .await
             .expect("resp 1");

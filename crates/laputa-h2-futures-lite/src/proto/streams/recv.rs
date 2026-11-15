@@ -210,7 +210,7 @@ impl Recv {
                     && frame
                         .pseudo()
                         .status
-                        .map_or(true, |status| status != 204 && status != 304)
+                        .is_none_or(|status| status != 204 && status != 304)
                 {
                     proto_err!(stream: "recv_headers with END_STREAM: content-length is not zero; stream={:?};", stream.id);
                     return Err(Error::library_reset(stream.id, Reason::PROTOCOL_ERROR).into());
@@ -1275,6 +1275,22 @@ impl Recv {
     }
 }
 
+// ===== impl Open =====
+
+impl Open {
+    pub fn is_push_promise(&self) -> bool {
+        matches!(*self, Self::PushPromise)
+    }
+}
+
+// ===== impl RecvHeaderBlockError =====
+
+impl From<Error> for RecvHeaderBlockError {
+    fn from(err: Error) -> Self {
+        RecvHeaderBlockError::State(err)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1329,18 +1345,3 @@ mod tests {
     }
 }
 
-// ===== impl Open =====
-
-impl Open {
-    pub fn is_push_promise(&self) -> bool {
-        matches!(*self, Self::PushPromise)
-    }
-}
-
-// ===== impl RecvHeaderBlockError =====
-
-impl From<Error> for RecvHeaderBlockError {
-    fn from(err: Error) -> Self {
-        RecvHeaderBlockError::State(err)
-    }
-}

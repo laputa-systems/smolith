@@ -209,7 +209,7 @@ where
             log::trace!("writing; remaining={}", buffer.len());
 
             let buf = &buffer;
-            let n = ready!(pinned.inner.as_mut().poll_write(cx, &buf))?;
+            let n = ready!(pinned.inner.as_mut().poll_write(cx, buf))?;
 
             if n == 0 {
                 return Poll::Ready(Err(io::Error::new(

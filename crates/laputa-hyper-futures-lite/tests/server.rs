@@ -1,4 +1,3 @@
-#![deny(warnings)]
 #![deny(rust_2018_idioms)]
 
 use std::future::Future;
@@ -48,7 +47,7 @@ fn get_should_ignore_body() {
     ",
     )
     .unwrap();
-    req.read(&mut [0; 256]).unwrap();
+    let _ = req.read(&mut [0; 256]).unwrap();
 
     assert_eq!(server.body(), b"");
 }
@@ -67,7 +66,7 @@ fn get_with_body() {
     ",
     )
     .unwrap();
-    req.read(&mut [0; 256]).unwrap();
+    let _ = req.read(&mut [0; 256]).unwrap();
 
     // note: doesn't include trailing \r\n, cause Content-Length wasn't 21
     assert_eq!(server.body(), b"I'm a good request.");
@@ -473,7 +472,7 @@ fn post_with_content_length_body() {
     ",
     )
     .unwrap();
-    req.read(&mut [0; 256]).unwrap();
+    let _ = req.read(&mut [0; 256]).unwrap();
 
     assert_eq!(server.body(), b"hello");
 }
@@ -519,7 +518,7 @@ fn post_with_chunked_body() {
     ",
     )
     .unwrap();
-    req.read(&mut [0; 256]).unwrap();
+    let _ = req.read(&mut [0; 256]).unwrap();
 
     assert_eq!(server.body(), b"qwert");
 }
@@ -544,7 +543,7 @@ fn post_with_chunked_overflow() {
     ",
     )
     .unwrap();
-    req.read(&mut [0; 256]).unwrap();
+    let _ = req.read(&mut [0; 256]).unwrap();
 
     let err = server.body_err().source().unwrap().to_string();
     assert!(
@@ -573,7 +572,7 @@ fn post_with_incomplete_body() {
 
     server.body_err();
 
-    req.read(&mut [0; 256]).expect("read");
+    let _ = req.read(&mut [0; 256]).expect("read");
 }
 
 #[test]
@@ -596,7 +595,7 @@ fn post_with_chunked_missing_final_digit() {
 
     server.body_err();
 
-    req.read(&mut [0; 256]).expect("read");
+    let _ = req.read(&mut [0; 256]).expect("read");
 }
 
 #[test]
@@ -1334,7 +1333,7 @@ fn http1_graceful_shutdown_after_upgrade() {
         )
         .expect("write 1");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let response = s(&buf);
         assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
@@ -1426,7 +1425,7 @@ fn http1_allow_half_close() {
         tcp.shutdown(::std::net::Shutdown::Write).expect("SHDN_WR");
 
         let mut buf = [0; 256];
-        tcp.read(&mut buf).unwrap();
+        let _ = tcp.read(&mut buf).unwrap();
         let expected = "HTTP/1.1 200 OK\r\n";
         assert_eq!(s(&buf[..expected.len()]), expected);
     });
@@ -1489,7 +1488,7 @@ fn returning_1xx_response_is_error() {
         let mut tcp = connect(&addr);
         tcp.write_all(b"GET / HTTP/1.1\r\n\r\n").unwrap();
         let mut buf = [0; 256];
-        tcp.read(&mut buf).unwrap();
+        let _ = tcp.read(&mut buf).unwrap();
 
         let expected = "HTTP/1.1 500 ";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -1746,7 +1745,7 @@ fn upgrades() {
         )
         .expect("write 1");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let expected = "HTTP/1.1 101 Switching Protocols\r\n";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -1802,7 +1801,7 @@ fn http_connect() {
         )
         .expect("write 1");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let expected = "HTTP/1.1 200 OK\r\n";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -1861,7 +1860,7 @@ fn upgrades_new() {
         )
         .expect("write 1");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let response = s(&buf);
         assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
@@ -1973,7 +1972,7 @@ fn http_connect_new() {
         )
         .expect("write 1");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let expected = "HTTP/1.1 200 OK\r\n";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -2739,7 +2738,7 @@ fn parse_errors_send_4xx_response() {
         let mut tcp = connect(&addr);
         tcp.write_all(b"GE T / HTTP/1.1\r\n\r\n").unwrap();
         let mut buf = [0; 256];
-        tcp.read(&mut buf).unwrap();
+        let _ = tcp.read(&mut buf).unwrap();
 
         let expected = "HTTP/1.1 400 ";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -2764,7 +2763,7 @@ fn illegal_request_length_returns_400_response() {
         tcp.write_all(b"POST / HTTP/1.1\r\nContent-Length: foo\r\n\r\n")
             .unwrap();
         let mut buf = [0; 256];
-        tcp.read(&mut buf).unwrap();
+        let _ = tcp.read(&mut buf).unwrap();
 
         let expected = "HTTP/1.1 400 ";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -2807,7 +2806,7 @@ fn max_buf_size() {
         tcp.write_all(b"POST /").expect("write 1");
         tcp.write_all(&[b'a'; MAX]).expect("write 2");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let expected = "HTTP/1.1 431 ";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -2872,7 +2871,7 @@ fn max_header_size_exceeded() {
         tcp.write_all(&[b'a'; 1000]).expect("write 2");
         tcp.write_all(b"\r\n\r\n").expect("write 3");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let expected = "HTTP/1.1 431 ";
         assert_eq!(s(&buf[..expected.len()]), expected);
@@ -2933,7 +2932,7 @@ fn max_header_size_with_large_max_buf_size() {
         tcp.write_all(&[b'a'; 1000]).expect("write 2");
         tcp.write_all(b"\r\n\r\n").expect("write 3");
         let mut buf = [0; 256];
-        tcp.read(&mut buf).expect("read 1");
+        let _ = tcp.read(&mut buf).expect("read 1");
 
         let expected = "HTTP/1.1 431 ";
         assert_eq!(s(&buf[..expected.len()]), expected);

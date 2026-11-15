@@ -1,4 +1,3 @@
-#![deny(warnings)]
 #[macro_use]
 mod support;
 use self::support::*;

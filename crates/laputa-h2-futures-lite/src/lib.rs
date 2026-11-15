@@ -127,7 +127,7 @@ macro_rules! debug_span {
 }
 
 #[cfg(not(feature = "tracing"))]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Span;
 
 #[cfg(not(feature = "tracing"))]
@@ -156,6 +156,11 @@ impl Span {
 
 #[cfg(not(feature = "tracing"))]
 pub(crate) struct Entered;
+
+#[cfg(not(feature = "tracing"))]
+impl Drop for Entered {
+    fn drop(&mut self) {}
+}
 
 #[cfg(not(feature = "tracing"))]
 pub(crate) mod instrument {
