@@ -27,8 +27,8 @@ trait FloatExt:
     const HALF: Self;
 
     fn is_finite(self) -> bool;
-    fn next_up(self) -> Self;
-    fn next_down(self) -> Self;
+    fn next_value_up(self) -> Self;
+    fn next_value_down(self) -> Self;
     /// Generate a random float in [0, 1) range.
     fn gen_close_01_open(rng: &mut impl BaseRng) -> Self;
     /// Generate a random float in (0, 1] range.
@@ -52,7 +52,7 @@ macro_rules! impl_float_ext {
                 $float::is_finite(self)
             }
             #[inline]
-            fn next_up(self) -> Self {
+            fn next_value_up(self) -> Self {
                 let bits = self.to_bits();
                 if self.is_nan() || bits == $float::INFINITY.to_bits() {
                     return self;
@@ -68,11 +68,11 @@ macro_rules! impl_float_ext {
                 $float::from_bits(next)
             }
             #[inline]
-            fn next_down(self) -> Self {
+            fn next_value_down(self) -> Self {
                 if self.is_nan() || self.to_bits() == $float::NEG_INFINITY.to_bits() {
                     return self;
                 }
-                (-(-self).next_up())
+                (-(-self).next_value_up())
             }
             #[inline]
             fn gen_close_01_open(rng: &mut impl BaseRng) -> Self {
@@ -163,7 +163,7 @@ fn float_range_impl<T: FloatExt>(rng: &mut impl BaseRng, range: impl RangeBounds
     }
     let lower = match range.start_bound() {
         Bound::Excluded(_) => {
-            let next = low.next_up();
+            let next = low.next_value_up();
             if next.is_finite() {
                 Some(next)
             } else {
@@ -174,7 +174,7 @@ fn float_range_impl<T: FloatExt>(rng: &mut impl BaseRng, range: impl RangeBounds
     };
     let upper = match range.end_bound() {
         Bound::Excluded(_) => {
-            let next = high.next_down();
+            let next = high.next_value_down();
             if next.is_finite() {
                 Some(next)
             } else {

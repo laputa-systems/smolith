@@ -287,10 +287,15 @@ def self_check(advisories):
 
 def components():
     _version, specs = load_release(ROOT)
-    return [
-        (name, spec["package"], spec["upstream_name"], spec["upstream_version"])
-        for name, spec in specs.items()
-    ]
+    owned = []
+    unchecked = []
+    for name, spec in specs.items():
+        upstream_version = spec.get("upstream_version")
+        if upstream_version is None:
+            unchecked.append(name)
+            continue
+        owned.append((name, spec["package"], spec["upstream_name"], upstream_version))
+    return owned, unchecked
 
 
 def lock_packages():
@@ -451,7 +456,13 @@ def main():
     self_check(advisories)
     failures = []
     notes = []
-    owned = components()
+    owned, unchecked = components()
+    if unchecked:
+        notes.append(
+            "unchecked: "
+            + ", ".join(sorted(unchecked))
+            + " (no recorded upstream version to match advisories against)"
+        )
     checked_pairs = set()
     for _key, package, upstream_name, upstream_version in owned:
         checked_pairs.add((upstream_name, upstream_version))
