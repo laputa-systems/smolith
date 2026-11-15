@@ -339,7 +339,7 @@ where
         // order to placate the borrow checker — `self` is mutably borrowed by
         // `poll2`, which means that we can't borrow `self.span` to enter it.
         // The clone is just an atomic ref bump.
-        let span = self.inner.span.clone();
+        let span = self.inner.span;
         let _e = span.enter();
         let span = tracing::trace_span!("poll");
         let _e = span.enter();
@@ -624,7 +624,7 @@ where
         if self
             .go_away
             .going_away()
-            .map_or(false, |frame| frame.reason() == reason)
+            .is_some_and(|frame| frame.reason() == reason)
         {
             tracing::trace!("    -> already going away");
             *self.state = State::Closing(reason, initiator);

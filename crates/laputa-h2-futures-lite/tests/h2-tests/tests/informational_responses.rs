@@ -295,12 +295,10 @@ fn client_poll_informational_responses_none() {
         }).detach();
 
         // Poll for informational responses
-        loop {
-            match poll_fn(|cx| response_future.poll_informational(cx)).await {
-                Some(Ok(rsp)) => panic!("Unexpected informational response {:?}", rsp),
-                Some(Err(e)) => panic!("Error polling informational: {:?}", e),
-                None => break,
-            }
+        match poll_fn(|cx| response_future.poll_informational(cx)).await {
+            Some(Ok(rsp)) => panic!("Unexpected informational response {:?}", rsp),
+            Some(Err(e)) => panic!("Error polling informational: {:?}", e),
+            None => {}
         }
         // Let the server continue sending responses
         sync_sender.send(()).unwrap();
@@ -369,19 +367,16 @@ fn client_poll_informational_responses() {
 
         let response_fut = async move {
             // Poll for informational responses
-            loop {
-                match poll_fn(|cx| response_future.poll_informational(cx)).await {
-                    Some(Ok(info_response)) => {
-                        assert_eq!(info_response.status(), StatusCode::EARLY_HINTS);
-                        assert_eq!(
-                            info_response.headers().get("link").unwrap(),
-                            "</style.css>; rel=preload"
-                        );
-                        break;
-                    }
-                    Some(Err(e)) => panic!("Error polling informational: {:?}", e),
-                    None => break,
+            match poll_fn(|cx| response_future.poll_informational(cx)).await {
+                Some(Ok(info_response)) => {
+                    assert_eq!(info_response.status(), StatusCode::EARLY_HINTS);
+                    assert_eq!(
+                        info_response.headers().get("link").unwrap(),
+                        "</style.css>; rel=preload"
+                    );
                 }
+                Some(Err(e)) => panic!("Error polling informational: {:?}", e),
+                None => panic!("expected an informational response before the final response"),
             }
 
             // Get the final response
