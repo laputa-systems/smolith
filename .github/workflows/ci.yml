@@ -38,6 +38,8 @@ jobs:
       - name: python tool tests
         run: python3 -m unittest discover -s tests -p 'test_*.py' --verbose
       - name: feature and target check
+        env:
+          RUSTFLAGS: '--cfg hyper_unstable_ffi --cfg hyper_unstable_tracing'
         run: cargo check --workspace --all-features --all-targets
       - name: graph gate
         run: tools/graph-gate.sh
