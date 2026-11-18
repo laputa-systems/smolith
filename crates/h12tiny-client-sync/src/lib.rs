@@ -474,7 +474,31 @@ pub struct ResponseBody {
     mode: BodyMode,
 }
 
+/// A handle to interrupt I/O on a blocking response connection.
+///
+/// Dropping this handle releases its socket reference. Calling
+/// [`Self::shutdown`] aborts the connection for the response body too.
+#[derive(Debug)]
+pub struct ResponseBodyShutdown(TcpStream);
+
+impl ResponseBodyShutdown {
+    /// Shuts down both directions of the connection, waking blocked socket I/O.
+    ///
+    /// The caller must discard the interrupted response body.
+    pub fn shutdown(&self) -> io::Result<()> {
+        self.0.shutdown(std::net::Shutdown::Both)
+    }
+}
+
 impl ResponseBody {
+    /// Duplicates the underlying socket for shutdown from another thread.
+    ///
+    /// Keep the handle only as long as the body so the duplicate does not
+    /// extend the lifetime of the connection after reading.
+    pub fn shutdown_handle(&self) -> io::Result<ResponseBodyShutdown> {
+        self.connection.socket().try_clone().map(ResponseBodyShutdown)
+    }
+
     /// Sets the timeout for each subsequent blocking body read.
     ///
     /// `None` restores the platform's default blocking behavior. A zero
@@ -684,6 +708,14 @@ enum Connection {
 }
 
 impl Connection {
+    fn socket(&self) -> &TcpStream {
+        match self {
+            Self::Tcp(stream) => stream,
+            #[cfg(feature = "tls")]
+            Self::Tls(stream) => &stream.sock,
+        }
+    }
+
     fn set_timeouts(
         &self,
         read_timeout: Option<Duration>,
@@ -1511,6 +1543,51 @@ mod tests {
             .body_mut()
             .set_read_timeout(Some(Duration::from_millis(900)))
             .expect("a completed body does not reconfigure its closed socket");
+    }
+
+    #[test]
+    fn response_body_shutdown_closes_a_stalled_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut head = Vec::new();
+            while super::find_head_end(&head).is_none() {
+                let mut byte = [0];
+                stream.read_exact(&mut byte).unwrap();
+                head.push(byte[0]);
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nx")
+                .unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            assert_eq!(stream.read(&mut [0]).unwrap(), 0);
+        });
+        let request = Request::builder()
+            .uri(format!("http://{address}/stalled"))
+            .body(Vec::new())
+            .unwrap();
+        let mut body = Client::new().request(request).unwrap().into_body();
+        body.set_read_timeout(Some(Duration::from_secs(60))).unwrap();
+        drop(body.shutdown_handle().unwrap());
+        let mut byte = [0_u8; 1];
+        body.read_exact(&mut byte).unwrap();
+        assert_eq!(byte, [b'x']);
+
+        let shutdown = body.shutdown_handle().unwrap();
+        std::thread::scope(|scope| {
+            let (reading, wait_for_read) = mpsc::sync_channel(0);
+            scope.spawn(move || {
+                wait_for_read.recv().unwrap();
+                shutdown.shutdown().unwrap();
+            });
+            reading.send(()).unwrap();
+            assert_eq!(
+                body.read_exact(&mut byte).unwrap_err().kind(),
+                std::io::ErrorKind::UnexpectedEof
+            );
+        });
+        server.join().unwrap();
     }
 
     #[test]
