@@ -67,7 +67,7 @@ slot once and let requests waiting for capacity retry their dial.
 `h12tiny-client-sync` opens one HTTP/1.1 connection per request, sends
 `Connection: close` unless the caller supplies `Connection`, and returns a
 `ResponseBody` that owns that connection and implements `std::io::Read`.
-Dropping the body closes the transport.
+Dropping the body closes the transport when no shutdown handle remains.
 There is no pool, proxy or redirect policy, protocol upgrade, or async runtime.
 
 `request_with_timeout` shares one deadline across socket writes and interim
@@ -75,6 +75,9 @@ and final response headers, including socket operations inside Rustls.
 Connection setup has its separate `connect_timeout`; the dispatch deadline
 is cleared before returning the response body. `ResponseBody::set_read_timeout`
 changes the timeout for subsequent network reads even when data is buffered.
+`ResponseBody::shutdown_handle` duplicates the socket for explicit shutdown
+from another thread. Shutdown wakes blocked socket I/O. Discard the response
+after shutdown and drop the handle with the body.
 `is_complete()` records fixed-length and chunked completion, and real EOF for
 close-delimited bodies. A timed-out chunked read keeps accepted separator,
 size-line, chunk, and trailer progress, so a later `Read` continues that body. Streaming uploads use `request_streaming` with a
