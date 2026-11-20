@@ -36,15 +36,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-8 · P2 · Types: HTTP/2 framing and compression
-
-- **Area:** deslop · types · HTTP/2 framing and compression
-- **Where:** crates/laputa-h2-futures-lite/src/{codec,frame,futures_codec,hpack} and the codec tests (tests/h2-tests/tests/codec_read.rs, codec_write.rs)
-- **Problem:** Scope: 11.5k Rust lines; futures_codec (2.0k) is wholly ours, the rest changes about 0.4k lines against h2 0.4.20. Contracts: HTTP/2 frame parsing and encoding, HPACK, and the futures-io codec that replaces tokio-util. Consumers: hyper, h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Measure the applicable strict candidates; fix witnessed typing defects; keep behavior and record adopted and rejected settings with counts. Acceptance: cargo test -p laputa-h2-futures-lite; cargo clippy -p laputa-h2-futures-lite --all-targets; then make test and make lint; the deslop Types acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-9 · P2 · Types: HTTP/2 connection and streams
 
 - **Area:** deslop · types · HTTP/2 connection and streams
@@ -144,15 +135,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-20 · P2 · Tests: HTTP/2 framing and compression
-
-- **Area:** deslop · tests · HTTP/2 framing and compression
-- **Where:** crates/laputa-h2-futures-lite/src/{codec,frame,futures_codec,hpack} and the codec tests (tests/h2-tests/tests/codec_read.rs, codec_write.rs)
-- **Problem:** Scope: 11.5k Rust lines; futures_codec (2.0k) is wholly ours, the rest changes about 0.4k lines against h2 0.4.20. Contracts: HTTP/2 frame parsing and encoding, HPACK, and the futures-io codec that replaces tokio-util. Consumers: hyper, h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: cargo test -p laputa-h2-futures-lite; cargo clippy -p laputa-h2-futures-lite --all-targets; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-21 · P2 · Tests: HTTP/2 connection and streams
 
 - **Area:** deslop · tests · HTTP/2 connection and streams
@@ -249,15 +231,6 @@ Not started.
 - **Where:** crates/smol, smol-macros, futures-lite, async-dup, easy-parallel, fastrand, fastrand-contrib
 - **Problem:** Scope: 12.4k Rust lines, about 0.55k changed against the pinned releases (futures-lite 0.47k); smol-macros, easy-parallel and fastrand-contrib (1.9k) have no pinned release to diff and count as ours. Contracts: facade re-exports, futures-lite traits, macro and random-number APIs. Consumers: laputa-smol consumers, h12tiny and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
 - **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib; cargo clippy -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-32 · P2 · Dead code: HTTP/2 framing and compression
-
-- **Area:** deslop · dead code · HTTP/2 framing and compression
-- **Where:** crates/laputa-h2-futures-lite/src/{codec,frame,futures_codec,hpack} and the codec tests (tests/h2-tests/tests/codec_read.rs, codec_write.rs)
-- **Problem:** Scope: 11.5k Rust lines; futures_codec (2.0k) is wholly ours, the rest changes about 0.4k lines against h2 0.4.20. Contracts: HTTP/2 frame parsing and encoding, HPACK, and the futures-io codec that replaces tokio-util. Consumers: hyper, h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-h2-futures-lite; cargo clippy -p laputa-h2-futures-lite --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
 - **Fix with:** deslop
 - **Effort:** M
 
