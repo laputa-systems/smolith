@@ -54,15 +54,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-11 · P2 · Types: HTTP/1 protocol
-
-- **Area:** deslop · types · HTTP/1 protocol
-- **Where:** crates/laputa-hyper-futures-lite/src/proto/h1 and tests (h1_shutdown_while_buffered, h1_flush_before_yield, ready_on_poll_stream, unbuffered_stream, h1_server)
-- **Problem:** Scope: 10.3k Rust lines; changes about 0.5k lines against hyper 1.12.0 (dispatch.rs pending_result and poll_close, conn.rs, io.rs, mock-io test port). Contracts: HTTP/1 request and response parsing, framing, chunked decoding and connection lifecycle. Consumers: h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Measure the applicable strict candidates; fix witnessed typing defects; keep behavior and record adopted and rejected settings with counts. Acceptance: cargo test -p laputa-hyper-futures-lite; cargo clippy -p laputa-hyper-futures-lite --all-targets; then make test and make lint; the deslop Types acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-12 · P2 · Types: Hyper client, server, body and HTTP/2 glue
 
 - **Area:** deslop · types · Hyper client, server, body and HTTP/2 glue
@@ -153,15 +144,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-23 · P2 · Tests: HTTP/1 protocol
-
-- **Area:** deslop · tests · HTTP/1 protocol
-- **Where:** crates/laputa-hyper-futures-lite/src/proto/h1 and tests (h1_shutdown_while_buffered, h1_flush_before_yield, ready_on_poll_stream, unbuffered_stream, h1_server)
-- **Problem:** Scope: 10.3k Rust lines; changes about 0.5k lines against hyper 1.12.0 (dispatch.rs pending_result and poll_close, conn.rs, io.rs, mock-io test port). Contracts: HTTP/1 request and response parsing, framing, chunked decoding and connection lifecycle. Consumers: h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: cargo test -p laputa-hyper-futures-lite; cargo clippy -p laputa-hyper-futures-lite --all-targets; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-24 · P2 · Tests: Hyper client, server, body and HTTP/2 glue
 
 - **Area:** deslop · tests · Hyper client, server, body and HTTP/2 glue
@@ -249,15 +231,6 @@ Not started.
 - **Where:** crates/laputa-h2-futures-lite/src top-level files (client, server, share, error, lib, ext, fuzz_bridge), tests/h2-tests/tests/{client_request,server}.rs, tests/h2-support, tests/h2-fuzz, fuzz, util
 - **Problem:** Scope: 11.6k Rust lines; src changes are the tokio-to-futures-io port and the tracing shim in lib.rs; the 1.6k h2-support harness and the ported tests are ours. Contracts: h2 client and server public API, the in-process test harness and the fuzz bridge. Consumers: hyper, h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
 - **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-h2-futures-lite -p h2-tests -p h2-support; cargo clippy -p laputa-h2-futures-lite -p h2-tests -p h2-support --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-35 · P2 · Dead code: HTTP/1 protocol
-
-- **Area:** deslop · dead code · HTTP/1 protocol
-- **Where:** crates/laputa-hyper-futures-lite/src/proto/h1 and tests (h1_shutdown_while_buffered, h1_flush_before_yield, ready_on_poll_stream, unbuffered_stream, h1_server)
-- **Problem:** Scope: 10.3k Rust lines; changes about 0.5k lines against hyper 1.12.0 (dispatch.rs pending_result and poll_close, conn.rs, io.rs, mock-io test port). Contracts: HTTP/1 request and response parsing, framing, chunked decoding and connection lifecycle. Consumers: h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-hyper-futures-lite; cargo clippy -p laputa-hyper-futures-lite --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
 - **Fix with:** deslop
 - **Effort:** M
 
