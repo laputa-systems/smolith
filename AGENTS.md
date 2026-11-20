@@ -40,3 +40,16 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 - [TODO.md](TODO.md) holds current findings and deferred work.
 - [UPSTREAM.toml](UPSTREAM.toml) is the provenance map.
 - [SECURITY.md](SECURITY.md) is the reporting path.
+
+## Verification
+
+- `make test` (workspace, h12tiny all features, maintained Hyper suites) and `make lint` (clippy; exits 0 with about 2,400 warning diagnostics, none denied). CI runs each as one step in job `verify` of `.github/workflows/ci.yml`; the macOS job runs `cargo test --workspace`.
+- Costs, macOS aarch64 18 cores, busy host (load 12-15), observations: `make test` cold 1,757 s (exit 0; a duplicate run shared the target directory, so an upper bound), warm 210 s (2,562 passed, 32 ignored); `make lint` cold 1,329 s, warm 2 s. Cold means an empty target directory with the kache wrapper active. Set `CARGO_BUILD_JOBS=4` and `TMPDIR=$PWD/.work/tmp`.
+- Runtime facade, traits and package graph: `tests/consumer/check.sh`, `tools/graph-gate.sh`, `sh scripts/check-features.sh`, `sh scripts/check-normal-dependencies.sh`, and each crate's tests.
+- HTTP client, server and body APIs: `crates/h12tiny/tests/client_compat.rs`, `server_bounds.rs`, `lifecycle_regressions.rs`; TLS and ALPN: `dogfood_tls.rs`, `server_tls_shutdown.rs`; H2 control and lifecycle: `h2_lifecycle.rs`.
+- HTTP/1 wire parsing and framing: `crates/h12tiny/tests/adversarial_h1.rs`, `raw_h1.rs`, and the Hyper `proto/h1` unit tests; HTTP/2 framing, HPACK and flow control: `crates/laputa-h2-futures-lite/tests/h2-tests/` and `tests/flow_control_futures.rs`; fork parity: `sh scripts/verify-protocols.sh`, with [the ledger](docs/h12tiny/fork-test-parity.md).
+- Websocket wire and web routing: `crates/h12tiny/tests/web_transport.rs`, `websocket_interop.rs`, and the `laputa-fastwebsockets-futures-lite` tests. Release graph and staging: `python3 -m unittest discover -s tests -p 'test_*.py'`.
+- Performance workloads: `cargo run --release -p smolith-qualify --bin baseline` (idle CPU, wake latency, TCP loopback; [docs/BASELINES.md](docs/BASELINES.md)) for the runtime, and `benchmarks/twelve-dollar/README.md` for HTTP serving.
+- Components, each a ticket group in `TODO-DESLOP.md` (about 20k lines or less): runtime scheduling and synchronization; runtime I/O, processes and blocking; runtime facade and utilities; HTTP/2 framing and compression; HTTP/2 connection and streams; HTTP/2 client, server and test support; HTTP/1 protocol; Hyper client, server, body and HTTP/2 glue; Hyper runtime traits, extensions and FFI; websocket and protocol test support; HTTP facade and clients; HTTP server and web utilities; repository tools, benchmarks and CI.
+- Upstream-derived trees are recorded with repository, branch, commit and released version in [UPSTREAM.toml](UPSTREAM.toml). Review only local divergence: about 8k changed lines across the forks, most in async-task, async-executor, hyper (1.1k) and h2 (0.9k plus the 2k-line `futures_codec`). Without a registry copy to diff, smol-macros, easy-parallel, fastrand-contrib and fastwebsockets count as ours.
+- Consumers: stuff (published `h12tiny-*` crates), the external runtime consumer in `tests/consumer/`, and the fleet repositories bctl, ctrs, laputa, soulseek-rs, stats, tansu and xsh.
