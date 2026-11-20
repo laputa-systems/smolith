@@ -25,6 +25,7 @@ pin_project! {
 
 const INITIAL_CAPACITY: usize = 8 * 1024;
 const BACKPRESSURE_BOUNDARY: usize = INITIAL_CAPACITY;
+const READ_WINDOW: usize = INITIAL_CAPACITY;
 
 pub(crate) struct ReadFrame {
     pub(crate) eof: bool,
@@ -146,16 +147,17 @@ where
             // get a spurious 0 that looks like EOF
             state.buffer.reserve(1);
 
-            // Zero spare capacity so a short read cannot observe uninitialized bytes.
             use bytes::BufMut;
             use std::mem::MaybeUninit;
 
-            let b = state.buffer.spare_capacity_mut();
+            let spare = state.buffer.spare_capacity_mut();
+            let window = spare.len().min(READ_WINDOW);
+            let b = &mut spare[..window];
             for x in b.iter_mut() {
                 *x = MaybeUninit::new(0);
             }
 
-            // SAFETY: every byte of the spare capacity was initialized above.
+            // SAFETY: every byte of the read window was initialized above.
             let b = unsafe { &mut *(b as *mut [MaybeUninit<u8>] as *mut [u8]) };
 
             let bytect = match pinned.inner.as_mut().poll_read(cx, b)? {
