@@ -555,15 +555,33 @@ async fn drain_active(active: &mut ActiveSet, timeout: Option<Duration>) -> bool
     }
 }
 
+#[cfg(unix)]
+const ENFILE: i32 = 23;
+#[cfg(unix)]
+const EMFILE: i32 = 24;
+
+fn is_descriptor_exhaustion(error: &io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        matches!(error.raw_os_error(), Some(EMFILE | ENFILE))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = error;
+        false
+    }
+}
+
 fn is_transient_accept_error(error: &io::Error) -> bool {
-    matches!(
-        error.kind(),
-        io::ErrorKind::Interrupted
-            | io::ErrorKind::WouldBlock
-            | io::ErrorKind::ConnectionAborted
-            | io::ErrorKind::ConnectionReset
-            | io::ErrorKind::TimedOut
-    )
+    is_descriptor_exhaustion(error)
+        || matches!(
+            error.kind(),
+            io::ErrorKind::Interrupted
+                | io::ErrorKind::WouldBlock
+                | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::TimedOut
+        )
 }
 
 async fn run<L, S, B, F>(server: Serve<L, S>, shutdown: F) -> io::Result<()>
@@ -927,6 +945,14 @@ mod tests {
         }
         for kind in [io::ErrorKind::PermissionDenied, io::ErrorKind::InvalidInput] {
             assert!(!is_transient_accept_error(&io::Error::from(kind)));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn descriptor_exhaustion_is_a_transient_accept_error() {
+        for code in [super::EMFILE, super::ENFILE] {
+            assert!(is_transient_accept_error(&io::Error::from_raw_os_error(code)));
         }
     }
 
