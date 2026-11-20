@@ -43,7 +43,8 @@ retried with a short backoff; fatal accept errors stop the loop.
 
 The setup deadline starts at acceptance. For cleartext it ends when protocol
 detection selects HTTP/1 or HTTP/2. For TLS it ends when the handshake
-completes. It does not limit an established response stream; HTTP/1 header
+completes for HTTP/1, or once the 24-byte client preface is consumed when ALPN
+selects HTTP/2. It does not limit an established response stream; HTTP/1 header
 reads keep their own timeout. Expiry closes the setup, reports
 `io::ErrorKind::TimedOut` to the connection-error hook, and releases the
 admission slot. `setup_timeout` sets another deadline, and `None` leaves setup

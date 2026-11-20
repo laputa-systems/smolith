@@ -324,8 +324,9 @@ impl<L, S> TlsServe<L, S> {
     /// Applies the Internet-facing listener preset.
     ///
     /// Caps active handshakes and connections at 1024, allows 10 s to finish
-    /// the TLS handshake, and closes a client that takes longer than 10 s to
-    /// send complete HTTP/1 headers.
+    /// the TLS handshake and (for ALPN `h2`) receive the HTTP/2 client preface,
+    /// and closes a client that takes longer than 10 s to send complete HTTP/1
+    /// headers.
     pub fn production(self) -> Self {
         self.with_bounds(ProductionBounds::default())
             .expect("production bounds are valid")
@@ -335,9 +336,10 @@ impl<L, S> TlsServe<L, S> {
 
     /// Bounds TLS acceptance, starting when the raw stream is accepted.
     ///
-    /// The deadline ends when the handshake completes. It does not limit an
-    /// established response stream. `None` leaves acceptance unbounded. A
-    /// zero duration is rejected.
+    /// The deadline ends when the handshake completes for HTTP/1, or once the
+    /// 24-byte HTTP/2 client preface is consumed when ALPN selects `h2`. It does
+    /// not limit an established response stream. `None` leaves acceptance
+    /// unbounded. A zero duration is rejected.
     pub fn setup_timeout(mut self, timeout: impl Into<Option<Duration>>) -> io::Result<Self> {
         self.setup_timeout = checked_setup_timeout(timeout.into())?;
         self.builder.set_setup_timeout(self.setup_timeout);
@@ -772,7 +774,7 @@ where
                                 )
                                 .await
                                 {
-                                    Either::Left((result, _timer)) => result,
+                                    Either::Left((result, timer)) => result.map(|tls| (tls, Some(timer))),
                                     Either::Right((_elapsed, handshake)) => {
                                         drop(handshake);
                                         Err(io::Error::new(
@@ -782,12 +784,12 @@ where
                                     }
                                 }
                             } else {
-                                handshake.await
+                                handshake.await.map(|tls| (tls, None))
                             }
                         };
                         let handshake = Box::pin(handshake);
                         let shutdown = Box::pin(shutdown_rx);
-                        let (tls, shutdown) = match future::select(handshake, shutdown).await {
+                        let ((tls, setup_deadline), shutdown) = match future::select(handshake, shutdown).await {
                             Either::Left((Ok(tls), shutdown)) => (tls, shutdown),
                             Either::Left((Err(error), _shutdown)) => {
                                 if let Some(hook) = hook {
@@ -803,7 +805,12 @@ where
                         };
 
                         let connection = match builder.serve_tls_connection(tls, service) {
-                            Ok(connection) => Box::pin(connection),
+                            Ok(mut connection) => {
+                                if let Some(deadline) = setup_deadline {
+                                    connection.set_h2_setup_deadline(deadline);
+                                }
+                                Box::pin(connection)
+                            }
                             Err(error) => {
                                 if let Some(hook) = hook {
                                     hook(error);

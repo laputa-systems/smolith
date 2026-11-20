@@ -440,6 +440,7 @@ impl<E> Builder<E> {
                 ConnState::H2 {
                     conn: self.http2.serve_connection(io, service),
                     preface_remaining,
+                    setup_deadline: self.setup_timeout.map(|timeout| AsyncIoTimer.sleep(timeout)),
                 }
             }
             #[cfg(not(feature = "http1"))]
@@ -615,6 +616,7 @@ pin_project_lite::pin_project! {
             #[pin]
             conn: Http2Connection<I, S, E>,
             preface_remaining: Arc<AtomicUsize>,
+            setup_deadline: Option<Pin<Box<dyn hyper::rt::Sleep>>>,
         },
         Cancelled,
         Unsupported {
@@ -646,7 +648,7 @@ where
             #[cfg(not(feature = "http1"))]
             ConnStateProj::H1 { .. } => {}
             #[cfg(feature = "http2")]
-            ConnStateProj::H2 { conn, preface_remaining } => {
+            ConnStateProj::H2 { conn, preface_remaining, .. } => {
                 // Hyper defers shutdown during the H2 handshake. Before the
                 // preface is consumed there are no streams to drain, so drop
                 // the driver instead of waiting indefinitely for peer input.
@@ -684,13 +686,25 @@ where
                     }),
                 },
                 ConnState::H1 { conn } => ConnState::H1 { conn },
-                ConnState::H2 { conn, preface_remaining } => ConnState::H2 {
+                ConnState::H2 {
                     conn,
                     preface_remaining,
+                    setup_deadline,
+                } => ConnState::H2 {
+                    conn,
+                    preface_remaining,
+                    setup_deadline,
                 },
                 ConnState::Cancelled => ConnState::Cancelled,
                 ConnState::Unsupported { error } => ConnState::Unsupported { error },
             },
+        }
+    }
+
+    #[cfg(feature = "tls")]
+    pub(crate) fn set_h2_setup_deadline(&mut self, deadline: Pin<Box<dyn hyper::rt::Sleep>>) {
+        if let ConnState::H2 { setup_deadline, .. } = &mut self.state {
+            *setup_deadline = Some(deadline);
         }
     }
 }
@@ -751,7 +765,11 @@ where
                         Version::H2 => {
                             let (io, preface_remaining) = io.track_h2_preface();
                             let conn = builder.http2.serve_connection(io, service);
-                            this.state.set(ConnState::H2 { conn, preface_remaining });
+                            this.state.set(ConnState::H2 {
+                                conn,
+                                preface_remaining,
+                                setup_deadline: None,
+                            });
                         }
                         #[cfg(not(feature = "http1"))]
                         Version::H1 => this.state.set(ConnState::Unsupported {
@@ -768,7 +786,27 @@ where
                 #[cfg(not(feature = "http1"))]
                 ConnStateProj::H1 { .. } => return Poll::Ready(Err(Version::H1.unsupported())),
                 #[cfg(feature = "http2")]
-                ConnStateProj::H2 { conn, .. } => return conn.poll(cx).map_err(Into::into),
+                ConnStateProj::H2 {
+                    conn,
+                    preface_remaining,
+                    setup_deadline,
+                } => match conn.poll(cx) {
+                    Poll::Ready(result) => return Poll::Ready(result.map_err(Into::into)),
+                    Poll::Pending => {
+                        if preface_remaining.load(Ordering::Relaxed) == 0 {
+                            *setup_deadline = None;
+                        } else if let Some(deadline) = setup_deadline.as_mut() {
+                            if deadline.as_mut().poll(cx).is_ready() {
+                                return Poll::Ready(Err(io::Error::new(
+                                    io::ErrorKind::TimedOut,
+                                    "connection setup deadline expired",
+                                )
+                                .into()));
+                            }
+                        }
+                        return Poll::Pending;
+                    }
+                },
                 #[cfg(not(feature = "http2"))]
                 ConnStateProj::H2 { .. } => return Poll::Ready(Err(Version::H2.unsupported())),
                 ConnStateProj::Cancelled => return Poll::Ready(Ok(())),
@@ -1029,6 +1067,80 @@ mod tests {
             } else {
                 let Poll::Ready(Err(error)) = poll_once(&mut connection.as_mut()) else {
                     panic!("setup must expire")
+                };
+                assert_eq!(
+                    error.downcast_ref::<io::Error>().unwrap().kind(),
+                    io::ErrorKind::TimedOut,
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "http2")]
+    #[test]
+    fn setup_deadline_bounds_pinned_h2_until_preface_is_consumed() {
+        use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+        use std::future::Future;
+
+        struct Deadline(Arc<AtomicBool>);
+        impl Future for Deadline {
+            type Output = ();
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+                if self.0.load(Ordering::SeqCst) {
+                    Poll::Ready(())
+                } else {
+                    Poll::Pending
+                }
+            }
+        }
+        impl hyper::rt::Sleep for Deadline {}
+
+        #[derive(Clone)]
+        struct Executor;
+        impl<F> hyper::rt::Executor<F> for Executor {
+            fn execute(&self, _: F) {}
+        }
+
+        struct EmptyBody;
+        impl http_body::Body for EmptyBody {
+            type Data = Bytes;
+            type Error = io::Error;
+            fn poll_frame(
+                self: Pin<&mut Self>,
+                _: &mut Context<'_>,
+            ) -> Poll<Option<Result<http_body::Frame<Bytes>, io::Error>>> {
+                Poll::Ready(None)
+            }
+        }
+
+        for prefix in [
+            b"".as_slice(),
+            b"PRI * HTTP/2.0\r\n".as_slice(),
+            H2_PREFACE,
+        ] {
+            let mut io = Chunks::new([prefix].into_iter().filter(|chunk| !chunk.is_empty()));
+            io.pending_on_empty = true;
+            let builder = super::Builder::new(Executor).http2_only();
+            let service = hyper::service::service_fn(|_| {
+                std::future::pending::<Result<http::Response<EmptyBody>, io::Error>>()
+            });
+            let mut connection = builder.serve_connection(io, service);
+            let expired = Arc::new(AtomicBool::new(false));
+            let super::ConnState::H2 { setup_deadline, .. } = &mut connection.state else {
+                panic!("h2 state")
+            };
+            *setup_deadline = Some(Box::pin(Deadline(expired.clone())));
+            let mut connection = Box::pin(connection);
+            assert!(poll_once(&mut connection.as_mut()).is_pending());
+            expired.store(true, Ordering::SeqCst);
+            if prefix == H2_PREFACE {
+                assert!(
+                    poll_once(&mut connection.as_mut()).is_pending(),
+                    "consumed preface disarms setup deadline",
+                );
+            } else {
+                let Poll::Ready(Err(error)) = poll_once(&mut connection.as_mut()) else {
+                    panic!("setup must expire before preface is consumed")
                 };
                 assert_eq!(
                     error.downcast_ref::<io::Error>().unwrap().kind(),
