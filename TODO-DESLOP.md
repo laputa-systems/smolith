@@ -369,33 +369,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-42 · P2 · h12tiny-server: a TLS peer that negotiates h2 and never sends the preface holds its admission slot forever
-
-- **Area:** deslop · diagnose · HTTP server lifecycle
-- **Where:** crates/h12tiny-server/src/lifecycle.rs (run_tls), crates/h12tiny-server/src/conn/auto.rs (serve_tls_connection, ConnState::H2), docs/h12tiny/server.md, docs/h12tiny/limits.md
-- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `cargo test -p h12tiny --all-features --test zz_diag`): with `serve_tls(...).setup_timeout(50ms).max_connections(1)` and ALPN h2, a client that completes the TLS handshake and then sends nothing still holds the only slot 250 ms later, so the next connection is rejected (`on_connection_rejected` fires once). A silent TCP peer that never starts TLS is released by the same deadline (control test). The setup deadline in `run_tls` covers only `acceptor.accept`; `serve_tls_connection` builds `ConnState::H2` with no deadline, and hyper arms no HTTP/2 preface timer. Anyone who can open `max_connections` TLS connections (the production preset allows 1024) locks the listener out indefinitely at the cost of one handshake each; the docs promise `production()` is Internet-facing and say the deadline ends when the TLS handshake completes.
-- **Recommendation:** Keep the setup deadline armed for an ALPN `h2` (and a pinned HTTP/2) connection until the 24-byte client preface has been consumed; `preface_remaining` already tracks that. Expiry reports `TimedOut` to the connection-error hook like the cleartext path. Add a regression test beside `server_tls_shutdown.rs` (the repro, plus the cleartext partial-preface case) and update docs/h12tiny/server.md and limits.md. Acceptance: the repro fails on base and passes on the fix; `cargo test -p h12tiny --all-features`; make test and make lint.
-- **Fix with:** lifecycle-concurrency
-- **Effort:** S
-
-### DSLP-43 · P2 · h12tiny-server: EMFILE or ENFILE from accept ends the whole listener
-
-- **Area:** deslop · diagnose · HTTP server lifecycle
-- **Where:** crates/h12tiny-server/src/lifecycle.rs (is_transient_accept_error, run, run_tls), docs/h12tiny/server.md
-- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `cargo test -p h12tiny --all-features --test zz_emfile -- --nocapture --test-threads=1`): a child process running `serve(...).max_connections(1024)` under `ulimit -n 48` and 200 idle loopback connections returns `Err(Os { code: 24, kind: TooManyOpenFiles })` from the lifecycle future, drains, and exits; connecting afterwards is refused even once the clients are gone. `is_transient_accept_error` retries only Interrupted, WouldBlock, ConnectionAborted, ConnectionReset and TimedOut, so descriptor exhaustion is fatal. A remote peer can trigger it by holding enough connections (the default Linux limit is 1024, the same as the production connection cap, and the listener, TLS files and logs also use descriptors), turning a resource shortage into a permanent outage that needs a restart.
-- **Recommendation:** Treat EMFILE and ENFILE (raw OS errors 24 and 23 on Unix, ErrorKind::TooManyOpenFiles where the toolchain has it) as transient: back off as for the other transient errors and keep accepting, and report them through a hook so operators can see them. Keep other errors fatal. Add a regression test with the child-process technique from the repro. Acceptance: the repro passes on the fix; make test and make lint.
-- **Fix with:** error-model
-- **Effort:** S
-
-### DSLP-44 · P2 · h2: per-read zeroing of the whole read-buffer spare capacity makes CPU per received byte scale with the advertised max_frame_size
-
-- **Area:** deslop · diagnose · HTTP/2 framing and compression
-- **Where:** crates/laputa-h2-futures-lite/src/futures_codec/framed_impl.rs (FramedImpl::poll_next)
-- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `cargo test --release -p laputa-h2-futures-lite --test zz_h2_diag -- --nocapture`): a peer that sends a frame header declaring the advertised maximum length and then trickles the payload one byte per read costs 0.8 us per byte at max_frame_size 16 KiB, 5.3 us at 1 MiB and 104.8 us at 16 MiB-1. `poll_next` zeroes the entire spare capacity before every `poll_read`, and the length-delimited decoder has already reserved the declared frame length. With the zeroing capped at 8 KiB (scratch edit, reverted) the cost is flat at 0.1 to 0.2 us per byte, so the zeroing is the cause. At 16 MiB a peer sending about 10,000 one-byte segments per second occupies one core of the server thread, which also stalls every other connection on that thread. Upstream h2 gets tokio ReadBuf, which initializes the buffer once. The default (16 KiB) is exposed at the 0.8 us level; raising `max_frame_size` through hyper or h12tiny makes it worse linearly.
-- **Recommendation:** Zero at most a fixed window (for example 8 KiB, the initial buffer size) per read and read into that window, or track how much of the buffer is already initialized as ReadBuf does, so the cost per read no longer depends on the reserved frame length. This also removes the need for the unsafe cast around it if a safe initialized-buffer pattern is used. Add a test that asserts the per-byte cost at 16 MiB-1 stays within a small factor of 16 KiB (counting reads, not wall time), and run the h2 suites (`sh scripts/verify-protocols.sh`). Acceptance: the repro table is flat; make test and make lint.
-- **Fix with:** make-it-fast
-- **Effort:** S
-
 ### DSLP-45 · P3 · h12tiny-server: an established HTTP/2 connection with no streams has no idle bound
 
 - **Area:** deslop · diagnose · HTTP server lifecycle
