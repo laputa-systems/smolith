@@ -18,15 +18,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-6 · P2 · Types: runtime I/O, processes and blocking
-
-- **Area:** deslop · types · runtime I/O, processes and blocking
-- **Where:** crates/async-io, polling, async-net, async-fs, async-process, async-signal, blocking, piper
-- **Problem:** Scope: 20.9k Rust lines, about 1.9k changed against the pinned releases (async-io 0.64k, async-process 0.29k, blocking 0.29k, async-fs 0.28k, polling 0.2k). Contracts: runtime reactor, socket, file, process, signal, blocking-pool and pipe APIs. Consumers: laputa-smol, h12tiny and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Measure the applicable strict candidates; fix witnessed typing defects; keep behavior and record adopted and rejected settings with counts. Acceptance: cargo test -p laputa-async-io -p laputa-polling -p laputa-async-net -p laputa-async-fs -p laputa-async-process -p laputa-async-signal -p laputa-blocking -p laputa-piper; cargo clippy -p laputa-async-io -p laputa-polling -p laputa-async-net -p laputa-async-fs -p laputa-async-process -p laputa-async-signal -p laputa-blocking -p laputa-piper --all-targets; then make test and make lint; the deslop Types acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-7 · P2 · Types: runtime facade and utilities
 
 - **Area:** deslop · types · runtime facade and utilities
@@ -126,15 +117,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-18 · P2 · Tests: runtime I/O, processes and blocking
-
-- **Area:** deslop · tests · runtime I/O, processes and blocking
-- **Where:** crates/async-io, polling, async-net, async-fs, async-process, async-signal, blocking, piper
-- **Problem:** Scope: 20.9k Rust lines, about 1.9k changed against the pinned releases (async-io 0.64k, async-process 0.29k, blocking 0.29k, async-fs 0.28k, polling 0.2k). Contracts: runtime reactor, socket, file, process, signal, blocking-pool and pipe APIs. Consumers: laputa-smol, h12tiny and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: cargo test -p laputa-async-io -p laputa-polling -p laputa-async-net -p laputa-async-fs -p laputa-async-process -p laputa-async-signal -p laputa-blocking -p laputa-piper; cargo clippy -p laputa-async-io -p laputa-polling -p laputa-async-net -p laputa-async-fs -p laputa-async-process -p laputa-async-signal -p laputa-blocking -p laputa-piper --all-targets; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-19 · P2 · Tests: runtime facade and utilities
 
 - **Area:** deslop · tests · runtime facade and utilities
@@ -231,15 +213,6 @@ Not started.
 - **Where:** tools, scripts, tests (Python suites, tests/consumer, tests/qualify), benchmarks/twelve-dollar, fixtures, Makefile and .github
 - **Problem:** Scope: about 15k lines of Rust, Python, shell and workflow files, all first-party. Contracts: release, staging, graph-gate, consumer and benchmark command contracts. Consumers: maintainers, CI and the external consumer fixture; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
 - **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: python3 -m unittest discover -s tests -p "test_*.py"; tools/graph-gate.sh; cargo test -p smolith-qualify; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-30 · P2 · Dead code: runtime I/O, processes and blocking
-
-- **Area:** deslop · dead code · runtime I/O, processes and blocking
-- **Where:** crates/async-io, polling, async-net, async-fs, async-process, async-signal, blocking, piper
-- **Problem:** Scope: 20.9k Rust lines, about 1.9k changed against the pinned releases (async-io 0.64k, async-process 0.29k, blocking 0.29k, async-fs 0.28k, polling 0.2k). Contracts: runtime reactor, socket, file, process, signal, blocking-pool and pipe APIs. Consumers: laputa-smol, h12tiny and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-async-io -p laputa-polling -p laputa-async-net -p laputa-async-fs -p laputa-async-process -p laputa-async-signal -p laputa-blocking -p laputa-piper; cargo clippy -p laputa-async-io -p laputa-polling -p laputa-async-net -p laputa-async-fs -p laputa-async-process -p laputa-async-signal -p laputa-blocking -p laputa-piper --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
 - **Fix with:** deslop
 - **Effort:** M
 

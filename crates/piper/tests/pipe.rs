@@ -110,15 +110,19 @@ fn large_pipe() {
 #[test]
 fn dropping_reader_wakes_writer() {
     let (r, mut w) = pipe(1);
+    let (filled_tx, filled_rx) = std::sync::mpsc::channel();
+    let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
 
     Parallel::new()
         .add(move || {
-            sleep(Duration::from_millis(100));
+            filled_rx.recv().unwrap();
             drop(r);
+            dropped_tx.send(()).unwrap();
         })
         .add(move || {
             future::block_on(w.write_all(&[0u8])).unwrap();
-            sleep(Duration::from_millis(200));
+            filled_tx.send(()).unwrap();
+            dropped_rx.recv().unwrap();
             with_cx(|cx| {
                 assert_eq!(w.poll_fill_bytes(cx, &[0u8]), Poll::Ready(0));
                 assert!(w.is_closed());
@@ -130,13 +134,15 @@ fn dropping_reader_wakes_writer() {
 #[test]
 fn dropping_writer_wakes_reader() {
     let (mut r, w) = pipe(1);
+    let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
 
     Parallel::new()
         .add(move || {
             drop(w);
+            dropped_tx.send(()).unwrap();
         })
         .add(move || {
-            sleep(Duration::from_millis(100));
+            dropped_rx.recv().unwrap();
             with_cx(|cx| {
                 assert_eq!(r.poll_drain_bytes(cx, &mut [0u8]), Poll::Ready(0));
                 assert!(r.is_closed());
