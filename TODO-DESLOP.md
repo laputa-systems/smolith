@@ -18,33 +18,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-3 · P2 · Types: runtime scheduling and synchronization
-
-- **Area:** deslop · types · runtime scheduling and synchronization
-- **Where:** crates/async-task, async-executor, async-lock, async-channel, async-broadcast, concurrent-queue, event-listener, event-listener-strategy, atomic-waker, parking, waker-fn
-- **Problem:** Scope: 28.8k Rust lines, about 3.7k changed against the pinned releases (async-task 1.7k, async-executor 1.3k, async-broadcast 0.35k; async-lock, async-channel, parking and waker-fn are near pristine). Contracts: runtime task, executor, lock, channel and wake APIs. Consumers: laputa-smol and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Measure the applicable strict candidates; fix witnessed typing defects; keep behavior and record adopted and rejected settings with counts. Acceptance: cargo test -p laputa-async-task -p laputa-async-executor -p laputa-async-lock -p laputa-async-channel -p laputa-async-broadcast -p laputa-concurrent-queue -p laputa-event-listener -p laputa-event-listener-strategy -p laputa-atomic-waker -p laputa-parking -p laputa-waker-fn; cargo clippy -p laputa-async-task -p laputa-async-executor -p laputa-async-lock -p laputa-async-channel -p laputa-async-broadcast -p laputa-concurrent-queue -p laputa-event-listener -p laputa-event-listener-strategy -p laputa-atomic-waker -p laputa-parking -p laputa-waker-fn --all-targets; then make test and make lint; the deslop Types acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-4 · P2 · Tests: runtime scheduling and synchronization
-
-- **Area:** deslop · tests · runtime scheduling and synchronization
-- **Where:** crates/async-task, async-executor, async-lock, async-channel, async-broadcast, concurrent-queue, event-listener, event-listener-strategy, atomic-waker, parking, waker-fn
-- **Problem:** Scope: 28.8k Rust lines, about 3.7k changed against the pinned releases (async-task 1.7k, async-executor 1.3k, async-broadcast 0.35k; async-lock, async-channel, parking and waker-fn are near pristine). Contracts: runtime task, executor, lock, channel and wake APIs. Consumers: laputa-smol and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: cargo test -p laputa-async-task -p laputa-async-executor -p laputa-async-lock -p laputa-async-channel -p laputa-async-broadcast -p laputa-concurrent-queue -p laputa-event-listener -p laputa-event-listener-strategy -p laputa-atomic-waker -p laputa-parking -p laputa-waker-fn; cargo clippy -p laputa-async-task -p laputa-async-executor -p laputa-async-lock -p laputa-async-channel -p laputa-async-broadcast -p laputa-concurrent-queue -p laputa-event-listener -p laputa-event-listener-strategy -p laputa-atomic-waker -p laputa-parking -p laputa-waker-fn --all-targets; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-5 · P2 · Dead code: runtime scheduling and synchronization
-
-- **Area:** deslop · dead code · runtime scheduling and synchronization
-- **Where:** crates/async-task, async-executor, async-lock, async-channel, async-broadcast, concurrent-queue, event-listener, event-listener-strategy, atomic-waker, parking, waker-fn
-- **Problem:** Scope: 28.8k Rust lines, about 3.7k changed against the pinned releases (async-task 1.7k, async-executor 1.3k, async-broadcast 0.35k; async-lock, async-channel, parking and waker-fn are near pristine). Contracts: runtime task, executor, lock, channel and wake APIs. Consumers: laputa-smol and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-async-task -p laputa-async-executor -p laputa-async-lock -p laputa-async-channel -p laputa-async-broadcast -p laputa-concurrent-queue -p laputa-event-listener -p laputa-event-listener-strategy -p laputa-atomic-waker -p laputa-parking -p laputa-waker-fn; cargo clippy -p laputa-async-task -p laputa-async-executor -p laputa-async-lock -p laputa-async-channel -p laputa-async-broadcast -p laputa-concurrent-queue -p laputa-event-listener -p laputa-event-listener-strategy -p laputa-atomic-waker -p laputa-parking -p laputa-waker-fn --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-6 · P2 · Types: runtime I/O, processes and blocking
 
 - **Area:** deslop · types · runtime I/O, processes and blocking
