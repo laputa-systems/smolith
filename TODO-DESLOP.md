@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 42
+Next: 47
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier D). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After the component tickets (DSLP-3 to DSLP-41, ordered Types, Tests, Dead code), work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -9,12 +9,12 @@ Not started.
 
 ## Tickets
 
-### DSLP-2 · P2 · Diagnose: ultrareview into this backlog
+### DSLP-1 · P2 · Ground: baseline, boundaries, and CI test entry point
 
-- **Area:** deslop · diagnose
-- **Where:** whole repository
-- **Problem:** No review has ranked this repository's risks for the deslop pass.
-- **Recommendation:** Run the deslop Diagnose step. Accept: the diff touches only docs, comments, and this file, and every finding names its Fix with.
+- **Area:** deslop · ground
+- **Where:** AGENTS.md, Makefile, .github/workflows/
+- **Problem:** Base 347b1d2; code lines Rust 115.2k, Python 2.9k (fleet/loc/v1, vendored included); timings not yet measured. Open fleet lint findings: mdtool 82, gha-syntax 10, linux-musl-toolchain 5, laputa-rustix 4, no-formatters 4, rust-collections 3, audit-upgrades 1, make-clean-target 1, and 2 more. Over 50k lines, so Types, Tests, and Dead code run per component; largest first-party groups: crates/laputa-h2-futures-lite (39k), crates/laputa-hyper-futures-lite (32k), crates/futures-lite (8k), crates/h12tiny (7k), crates/async-task (6k), crates/async-lock (5k), crates/polling (5k), crates/h12tiny-client (5k), and 2 more. Consumers in the fleet: bctl, ctrs, laputa, soulseek-rs, stats, stuff, tansu, xsh; their tests are the consumer check for API changes. Perf gate: decide in Ground whether a user-visible hot path needs a workload.
+- **Recommendation:** Run the deslop Ground step. Accept: CI runs make test and is green, and AGENTS.md has a Verification section.
 - **Fix with:** deslop
 - **Effort:** M
 
@@ -366,5 +366,50 @@ Not started.
 - **Where:** tools, scripts, tests (Python suites, tests/consumer, tests/qualify), benchmarks/twelve-dollar, fixtures, Makefile and .github
 - **Problem:** Scope: about 15k lines of Rust, Python, shell and workflow files, all first-party. Contracts: release, staging, graph-gate, consumer and benchmark command contracts. Consumers: maintainers, CI and the external consumer fixture; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
 - **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: python3 -m unittest discover -s tests -p "test_*.py"; tools/graph-gate.sh; cargo test -p smolith-qualify; then make test and make lint; the deslop Dead code acceptance holds within this component.
+- **Fix with:** deslop
+- **Effort:** M
+
+### DSLP-42 · P2 · h12tiny-server: a TLS peer that negotiates h2 and never sends the preface holds its admission slot forever
+
+- **Area:** deslop · diagnose · HTTP server lifecycle
+- **Where:** crates/h12tiny-server/src/lifecycle.rs (run_tls), crates/h12tiny-server/src/conn/auto.rs (serve_tls_connection, ConnState::H2), docs/h12tiny/server.md, docs/h12tiny/limits.md
+- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `cargo test -p h12tiny --all-features --test zz_diag`): with `serve_tls(...).setup_timeout(50ms).max_connections(1)` and ALPN h2, a client that completes the TLS handshake and then sends nothing still holds the only slot 250 ms later, so the next connection is rejected (`on_connection_rejected` fires once). A silent TCP peer that never starts TLS is released by the same deadline (control test). The setup deadline in `run_tls` covers only `acceptor.accept`; `serve_tls_connection` builds `ConnState::H2` with no deadline, and hyper arms no HTTP/2 preface timer. Anyone who can open `max_connections` TLS connections (the production preset allows 1024) locks the listener out indefinitely at the cost of one handshake each; the docs promise `production()` is Internet-facing and say the deadline ends when the TLS handshake completes.
+- **Recommendation:** Keep the setup deadline armed for an ALPN `h2` (and a pinned HTTP/2) connection until the 24-byte client preface has been consumed; `preface_remaining` already tracks that. Expiry reports `TimedOut` to the connection-error hook like the cleartext path. Add a regression test beside `server_tls_shutdown.rs` (the repro, plus the cleartext partial-preface case) and update docs/h12tiny/server.md and limits.md. Acceptance: the repro fails on base and passes on the fix; `cargo test -p h12tiny --all-features`; make test and make lint.
+- **Fix with:** lifecycle-concurrency
+- **Effort:** S
+
+### DSLP-43 · P2 · h12tiny-server: EMFILE or ENFILE from accept ends the whole listener
+
+- **Area:** deslop · diagnose · HTTP server lifecycle
+- **Where:** crates/h12tiny-server/src/lifecycle.rs (is_transient_accept_error, run, run_tls), docs/h12tiny/server.md
+- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `cargo test -p h12tiny --all-features --test zz_emfile -- --nocapture --test-threads=1`): a child process running `serve(...).max_connections(1024)` under `ulimit -n 48` and 200 idle loopback connections returns `Err(Os { code: 24, kind: TooManyOpenFiles })` from the lifecycle future, drains, and exits; connecting afterwards is refused even once the clients are gone. `is_transient_accept_error` retries only Interrupted, WouldBlock, ConnectionAborted, ConnectionReset and TimedOut, so descriptor exhaustion is fatal. A remote peer can trigger it by holding enough connections (the default Linux limit is 1024, the same as the production connection cap, and the listener, TLS files and logs also use descriptors), turning a resource shortage into a permanent outage that needs a restart.
+- **Recommendation:** Treat EMFILE and ENFILE (raw OS errors 24 and 23 on Unix, ErrorKind::TooManyOpenFiles where the toolchain has it) as transient: back off as for the other transient errors and keep accepting, and report them through a hook so operators can see them. Keep other errors fatal. Add a regression test with the child-process technique from the repro. Acceptance: the repro passes on the fix; make test and make lint.
+- **Fix with:** error-model
+- **Effort:** S
+
+### DSLP-44 · P2 · h2: per-read zeroing of the whole read-buffer spare capacity makes CPU per received byte scale with the advertised max_frame_size
+
+- **Area:** deslop · diagnose · HTTP/2 framing and compression
+- **Where:** crates/laputa-h2-futures-lite/src/futures_codec/framed_impl.rs (FramedImpl::poll_next)
+- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `cargo test --release -p laputa-h2-futures-lite --test zz_h2_diag -- --nocapture`): a peer that sends a frame header declaring the advertised maximum length and then trickles the payload one byte per read costs 0.8 us per byte at max_frame_size 16 KiB, 5.3 us at 1 MiB and 104.8 us at 16 MiB-1. `poll_next` zeroes the entire spare capacity before every `poll_read`, and the length-delimited decoder has already reserved the declared frame length. With the zeroing capped at 8 KiB (scratch edit, reverted) the cost is flat at 0.1 to 0.2 us per byte, so the zeroing is the cause. At 16 MiB a peer sending about 10,000 one-byte segments per second occupies one core of the server thread, which also stalls every other connection on that thread. Upstream h2 gets tokio ReadBuf, which initializes the buffer once. The default (16 KiB) is exposed at the 0.8 us level; raising `max_frame_size` through hyper or h12tiny makes it worse linearly.
+- **Recommendation:** Zero at most a fixed window (for example 8 KiB, the initial buffer size) per read and read into that window, or track how much of the buffer is already initialized as ReadBuf does, so the cost per read no longer depends on the reserved frame length. This also removes the need for the unsafe cast around it if a safe initialized-buffer pattern is used. Add a test that asserts the per-byte cost at 16 MiB-1 stays within a small factor of 16 KiB (counting reads, not wall time), and run the h2 suites (`sh scripts/verify-protocols.sh`). Acceptance: the repro table is flat; make test and make lint.
+- **Fix with:** make-it-fast
+- **Effort:** S
+
+### DSLP-45 · P3 · h12tiny-server: an established HTTP/2 connection with no streams has no idle bound
+
+- **Area:** deslop · diagnose · HTTP server lifecycle
+- **Where:** crates/h12tiny-server/src/lifecycle.rs (production), crates/h12tiny-server/src/conn/auto.rs (Builder::http2 configuration), docs/h12tiny/limits.md
+- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `repro_cleartext_h2_preface_then_idle_retains_capacity_after_setup_timeout` in `zz_diag`): a cleartext peer that sends the full HTTP/2 preface and then nothing keeps the only slot beyond the 50 ms setup deadline, because the deadline ends when the preface is detected. HTTP/1 has `header_read_timeout`, which `production()` sets to 10 s and which also bounds an idle keep-alive wait; HTTP/2 has no equivalent, and `production()` configures no HTTP/2 keep-alive interval or idle timeout. This is the same slot-exhaustion exposure as the preface case after the preface, with the documented setup deadline behaving as written, so it is a missing bound rather than a regression.
+- **Recommendation:** Decide the production bound for an HTTP/2 connection with no open streams (an idle timeout, or hyper HTTP/2 keep-alive pings with a timeout, which need the timer `production()` already installs) and record it in docs/h12tiny/limits.md. Revalidate that hyper exposes a suitable knob before choosing; if it does not, the choice belongs to the owner. Acceptance: a regression test shows an idle HTTP/2 peer is closed under `production()` while a connection with an active stream is not; make test and make lint.
+- **Fix with:** lifecycle-concurrency
+- **Effort:** M
+
+### DSLP-46 · P4 · Lint baseline: the Hyper fork inherits the upstream clippy restriction group and make lint reports about 2,400 diagnostics
+
+- **Area:** deslop · ground · lint baseline
+- **Where:** crates/laputa-hyper-futures-lite/Cargo.toml ([lints.clippy] restriction = warn), crates/laputa-h2-futures-lite/Cargo.toml and crates/h12tiny-client/Cargo.toml (manifest warnings)
+- **Problem:** `make lint` exits 0 but prints about 2,400 warning diagnostics (65 distinct messages) at base 5c794c6: 673 `unwrap()` on a Result, 408 `#[test]` outside a `#[cfg(test)]` module, 301 `allow` without a reason, 284 `#[allow]`, mostly in the Hyper fork and its tests because the fork keeps hyper's `restriction` group at warn. The manifests also warn about `package.readme` (`cargo::manual_readme`) in both protocol forks and about unused dependencies (h12tiny-client: `futures-util`, `h12tiny-client-normalize`, `h12tiny-core`; h12tiny-server: `async-net`, `futures-util`, `h12tiny-core`). No lint is denied, so a real warning cannot stand out and CI cannot gate on a clean run.
+- **Recommendation:** In the Types and Dead code tickets for the Hyper and h12tiny components: remove the six unused dependency entries after checking each feature set (the compiler reports them for the default `make lint` feature set only), drop or silence `readme` only if the owner wants it, and decide whether the fork keeps the restriction group; if it stays, allow the groups that are upstream style in tests with one reasoned entry each. Do not edit pristine upstream files for style. Acceptance: make lint warning count recorded before and after in the PR.
 - **Fix with:** deslop
 - **Effort:** M
