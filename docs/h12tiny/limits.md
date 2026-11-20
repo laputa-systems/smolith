@@ -49,10 +49,10 @@ stale retries, and 10 s DNS/TCP/TLS plus 30 s header deadlines.
 | --- | --- | --- | --- |
 | Active connection drivers | unlimited (no limit) | `crates/h12tiny-server/src/lifecycle.rs` | `Serve::max_connections` and `TlsServe::max_connections`; zero rejects every accepted stream. `production()` uses 1024 |
 | HTTP/1 header-read timeout | none unless a timer and timeout are set | `crates/h12tiny-server/src/lifecycle.rs`, `crates/h12tiny-server/src/conn/auto.rs` | `production()` installs a timer and 10 s timeout after H1 selection; the setup deadline covers the preceding negotiation |
-| Connection setup deadline | none | `crates/h12tiny-server/src/lifecycle.rs` | `setup_timeout`; zero is rejected, `None` disables it. `production()` uses 10 s from acceptance through cleartext selection or TLS negotiation |
+| Connection setup deadline | none | `crates/h12tiny-server/src/lifecycle.rs` | `setup_timeout`; zero is rejected, `None` disables it. `production()` uses 10 s from acceptance through cleartext selection, or through TLS negotiation and the HTTP/2 client preface for ALPN `h2` |
 | Pending H2 PING and SETTINGS acknowledgments | 32 | `crates/laputa-h2-futures-lite/src/proto/connection.rs` | Fixed; overflow ends the connection with `ENHANCE_YOUR_CALM` |
 | At-capacity rejection | drop the accepted stream | `crates/h12tiny-server/src/lifecycle.rs` | `on_connection_rejected` observes the drop |
-| Transient accept retry | retry with 10 ms backoff | `crates/h12tiny-server/src/lifecycle.rs` | Internal; fatal errors stop the loop |
+| Transient accept retry | retry with 10 ms backoff | `crates/h12tiny-server/src/lifecycle.rs` | Internal; includes descriptor exhaustion (`EMFILE`, `ENFILE`); fatal errors stop the loop |
 | Graceful drain deadline | none | `crates/h12tiny-server/src/lifecycle.rs` | `drain_timeout`; `production()` uses 30 s. On expiry active futures are dropped and the lifecycle returns `TimedOut` |
 | Server request body limit | none imposed by h12tiny | `crates/h12tiny-server/src/lifecycle.rs` | The service receives `hyper::body::Incoming`; the application owns its body limit |
 

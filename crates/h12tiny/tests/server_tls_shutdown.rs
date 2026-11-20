@@ -132,6 +132,172 @@ fn tls_setup_deadline_releases_a_silent_handshake_and_keeps_an_established_strea
 }
 
 #[test]
+fn tls_h2_setup_deadline_releases_silent_and_partial_preface_and_keeps_established_stream() {
+    smol::block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (error_tx, error_rx) = futures_channel::oneshot::channel();
+        let (partial_error_tx, partial_error_rx) = futures_channel::oneshot::channel();
+        let error_slots = Arc::new(Mutex::new(vec![partial_error_tx, error_tx]));
+        let rejected = Arc::new(AtomicUsize::new(0));
+        let hook = rejected.clone();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let server = smol::spawn(async move {
+            let mut config = fixture_server_config();
+            config.alpn_protocols = vec![b"h2".to_vec()];
+            h12tiny::server::serve_tls(
+                listener,
+                TlsAcceptor::from(Arc::new(config)),
+                service_fn(|_| async {
+                    async_io::Timer::after(Duration::from_millis(200)).await;
+                    Ok::<_, Infallible>(Response::new(FullBody::from_static(b"ok")))
+                }),
+                BoxExecutor::new(SmolExecutor),
+            )
+            .setup_timeout(Duration::from_millis(50))
+            .unwrap()
+            .max_connections(1)
+            .on_connection_rejected(move || {
+                hook.fetch_add(1, Ordering::SeqCst);
+            })
+            .on_connection_error(move |error| {
+                if let Some(tx) = error_slots.lock().unwrap().pop() {
+                    let _ = tx.send(error);
+                }
+            })
+            .shutdown_on(shutdown_rx)
+            .await
+            .unwrap();
+        });
+
+        let mut client_config = fixture_client_config();
+        client_config.alpn_protocols = vec![b"h2".to_vec()];
+        let connector = TlsConnector::from(Arc::new(client_config));
+
+        let stream = TcpStream::connect(address).await.unwrap();
+        let silent = bounded(connector.connect(
+            rustls::pki_types::ServerName::try_from("localhost").unwrap(),
+            stream,
+        ))
+        .await
+        .unwrap();
+        let error = bounded(error_rx).await.expect("silent h2 setup error");
+        let timed_out = error
+            .downcast_ref::<std::io::Error>()
+            .expect("setup timeout is an IO error");
+        assert_eq!(timed_out.kind(), std::io::ErrorKind::TimedOut);
+        drop(silent);
+
+        let stream = TcpStream::connect(address).await.unwrap();
+        let mut partial = bounded(connector.connect(
+            rustls::pki_types::ServerName::try_from("localhost").unwrap(),
+            stream,
+        ))
+        .await
+        .unwrap();
+        partial.write_all(b"PRI * HTTP/2.0\r\n").await.unwrap();
+        partial.flush().await.unwrap();
+        let error = bounded(partial_error_rx).await.expect("partial h2 setup error");
+        let timed_out = error
+            .downcast_ref::<std::io::Error>()
+            .expect("setup timeout is an IO error");
+        assert_eq!(timed_out.kind(), std::io::ErrorKind::TimedOut);
+        drop(partial);
+
+        let stream = TcpStream::connect(address).await.unwrap();
+        let peer = bounded(connector.connect(
+            rustls::pki_types::ServerName::try_from("localhost").unwrap(),
+            stream,
+        ))
+        .await
+        .unwrap();
+        let (mut sender, connection) = hyper::client::conn::http2::handshake(
+            BoxExecutor::new(SmolExecutor),
+            FuturesIo::new(peer),
+        )
+        .await
+        .unwrap();
+        let driver = smol::spawn(connection);
+        let response = bounded(
+            sender.send_request(
+                Request::get("https://localhost/")
+                    .body(FullBody::empty())
+                    .unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(bounded(collect(response.into_body())).await, b"ok");
+        assert_eq!(rejected.load(Ordering::SeqCst), 0);
+
+        drop(sender);
+        bounded(driver).await.unwrap();
+        shutdown_tx.send(()).unwrap();
+        bounded(server).await;
+    });
+}
+
+#[test]
+fn cleartext_partial_h2_preface_releases_slot_after_setup_timeout() {
+    smol::block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (error_tx, error_rx) = oneshot::channel();
+        let rejected = Arc::new(AtomicUsize::new(0));
+        let hook = rejected.clone();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let server = smol::spawn(async move {
+            let error_tx = Mutex::new(Some(error_tx));
+            h12tiny::server::serve(
+                listener,
+                service_fn(|_| async {
+                    Ok::<_, Infallible>(Response::new(FullBody::from_static(b"ok")))
+                }),
+                BoxExecutor::new(SmolExecutor),
+            )
+            .setup_timeout(Duration::from_millis(50))
+            .unwrap()
+            .max_connections(1)
+            .on_connection_rejected(move || {
+                hook.fetch_add(1, Ordering::SeqCst);
+            })
+            .on_connection_error(move |error| {
+                if let Some(tx) = error_tx.lock().unwrap().take() {
+                    let _ = tx.send(error);
+                }
+            })
+            .shutdown_on(shutdown_rx)
+            .await
+            .unwrap();
+        });
+
+        let mut partial = TcpStream::connect(address).await.unwrap();
+        partial.write_all(b"PRI * HTTP/2.0\r\n").await.unwrap();
+        partial.flush().await.unwrap();
+        let error = bounded(error_rx).await.expect("partial preface setup error");
+        let timed_out = error
+            .downcast_ref::<std::io::Error>()
+            .expect("setup timeout is an IO error");
+        assert_eq!(timed_out.kind(), std::io::ErrorKind::TimedOut);
+        drop(partial);
+
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        client.flush().await.unwrap();
+        let mut response = Vec::new();
+        bounded(client.read_to_end(&mut response)).await.unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 200"));
+        assert_eq!(rejected.load(Ordering::SeqCst), 0);
+
+        shutdown_tx.send(()).unwrap();
+        bounded(server).await;
+    });
+}
+
+#[test]
 fn tls_shutdown_cancels_incomplete_h2_preface_without_peer_disconnect() {
     smol::block_on(async {
         for prefix in [b"".as_slice(), b"PRI * HTTP/2.0\r\n".as_slice()] {
