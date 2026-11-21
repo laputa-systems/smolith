@@ -18,15 +18,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-7 · P2 · Types: runtime facade and utilities
-
-- **Area:** deslop · types · runtime facade and utilities
-- **Where:** crates/smol, smol-macros, futures-lite, async-dup, easy-parallel, fastrand, fastrand-contrib
-- **Problem:** Scope: 12.4k Rust lines, about 0.55k changed against the pinned releases (futures-lite 0.47k); smol-macros, easy-parallel and fastrand-contrib (1.9k) have no pinned release to diff and count as ours. Contracts: facade re-exports, futures-lite traits, macro and random-number APIs. Consumers: laputa-smol consumers, h12tiny and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Measure the applicable strict candidates; fix witnessed typing defects; keep behavior and record adopted and rejected settings with counts. Acceptance: cargo test -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib; cargo clippy -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib --all-targets; then make test and make lint; the deslop Types acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-9 · P2 · Types: HTTP/2 connection and streams
 
 - **Area:** deslop · types · HTTP/2 connection and streams
@@ -99,15 +90,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-19 · P2 · Tests: runtime facade and utilities
-
-- **Area:** deslop · tests · runtime facade and utilities
-- **Where:** crates/smol, smol-macros, futures-lite, async-dup, easy-parallel, fastrand, fastrand-contrib
-- **Problem:** Scope: 12.4k Rust lines, about 0.55k changed against the pinned releases (futures-lite 0.47k); smol-macros, easy-parallel and fastrand-contrib (1.9k) have no pinned release to diff and count as ours. Contracts: facade re-exports, futures-lite traits, macro and random-number APIs. Consumers: laputa-smol consumers, h12tiny and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: cargo test -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib; cargo clippy -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib --all-targets; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-21 · P2 · Tests: HTTP/2 connection and streams
 
 - **Area:** deslop · tests · HTTP/2 connection and streams
@@ -177,15 +159,6 @@ Not started.
 - **Where:** tools, scripts, tests (Python suites, tests/consumer, tests/qualify), benchmarks/twelve-dollar, fixtures, Makefile and .github
 - **Problem:** Scope: about 15k lines of Rust, Python, shell and workflow files, all first-party. Contracts: release, staging, graph-gate, consumer and benchmark command contracts. Consumers: maintainers, CI and the external consumer fixture; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
 - **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: python3 -m unittest discover -s tests -p "test_*.py"; tools/graph-gate.sh; cargo test -p smolith-qualify; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-31 · P2 · Dead code: runtime facade and utilities
-
-- **Area:** deslop · dead code · runtime facade and utilities
-- **Where:** crates/smol, smol-macros, futures-lite, async-dup, easy-parallel, fastrand, fastrand-contrib
-- **Problem:** Scope: 12.4k Rust lines, about 0.55k changed against the pinned releases (futures-lite 0.47k); smol-macros, easy-parallel and fastrand-contrib (1.9k) have no pinned release to diff and count as ours. Contracts: facade re-exports, futures-lite traits, macro and random-number APIs. Consumers: laputa-smol consumers, h12tiny and downstream runtime consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib; cargo clippy -p laputa-smol -p laputa-smol-macros -p laputa-futures-lite -p laputa-async-dup -p laputa-easy-parallel -p laputa-fastrand -p laputa-fastrand-contrib --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
 - **Fix with:** deslop
 - **Effort:** M
 
