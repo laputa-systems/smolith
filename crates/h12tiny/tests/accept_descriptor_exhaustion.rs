@@ -64,9 +64,11 @@ fn listener_survives_descriptor_exhaustion_and_accepts_after_release() {
     });
 
     let mut held = Vec::new();
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     for _ in 0..200 {
-        if let Ok(stream) = std::net::TcpStream::connect(("127.0.0.1", port)) {
-            held.push(stream);
+        match std::net::TcpStream::connect_timeout(&address, Duration::from_millis(200)) {
+            Ok(stream) => held.push(stream),
+            Err(_) => break,
         }
     }
     let deadline = Instant::now() + Duration::from_secs(2);
