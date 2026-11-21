@@ -45,15 +45,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-14 · P2 · Types: websocket and protocol test support
-
-- **Area:** deslop · types · websocket and protocol test support
-- **Where:** crates/laputa-fastwebsockets-futures-lite and crates/laputa-protocol-test-support
-- **Problem:** Scope: 3.5k Rust lines; fastwebsockets has no pinned upstream version in UPSTREAM.toml, so all of it counts. Contracts: websocket framing, handshake and mask contracts; the pipe, executor and budget harness used by protocol suites. Consumers: h12tiny-web, h12tiny and downstream websocket consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Measure the applicable strict candidates; fix witnessed typing defects; keep behavior and record adopted and rejected settings with counts. Acceptance: cargo test -p laputa-fastwebsockets-futures-lite -p laputa-protocol-test-support; cargo clippy -p laputa-fastwebsockets-futures-lite -p laputa-protocol-test-support --all-targets; then make test and make lint; the deslop Types acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-15 · P2 · Types: HTTP facade and clients
 
 - **Area:** deslop · types · HTTP facade and clients
@@ -108,15 +99,6 @@ Not started.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-26 · P2 · Tests: websocket and protocol test support
-
-- **Area:** deslop · tests · websocket and protocol test support
-- **Where:** crates/laputa-fastwebsockets-futures-lite and crates/laputa-protocol-test-support
-- **Problem:** Scope: 3.5k Rust lines; fastwebsockets has no pinned upstream version in UPSTREAM.toml, so all of it counts. Contracts: websocket framing, handshake and mask contracts; the pipe, executor and budget harness used by protocol suites. Consumers: h12tiny-web, h12tiny and downstream websocket consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: cargo test -p laputa-fastwebsockets-futures-lite -p laputa-protocol-test-support; cargo clippy -p laputa-fastwebsockets-futures-lite -p laputa-protocol-test-support --all-targets; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
 ### DSLP-27 · P2 · Tests: HTTP facade and clients
 
 - **Area:** deslop · tests · HTTP facade and clients
@@ -168,15 +150,6 @@ Not started.
 - **Where:** crates/laputa-hyper-futures-lite/src/{rt,common,ext,ffi,upgrade,error,trace,lib,test_support}.rs and directories, tests/support, capi
 - **Problem:** Scope: 7.5k Rust lines; changes about 0.2k lines against hyper 1.12.0 (rt timer, io compat, rewind, ffi task and client). Contracts: hyper::rt Read/Write/Timer/Executor traits, upgrade handling, C API. Consumers: h12tiny and downstream HTTP consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
 - **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-hyper-futures-lite; cargo clippy -p laputa-hyper-futures-lite --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-38 · P2 · Dead code: websocket and protocol test support
-
-- **Area:** deslop · dead code · websocket and protocol test support
-- **Where:** crates/laputa-fastwebsockets-futures-lite and crates/laputa-protocol-test-support
-- **Problem:** Scope: 3.5k Rust lines; fastwebsockets has no pinned upstream version in UPSTREAM.toml, so all of it counts. Contracts: websocket framing, handshake and mask contracts; the pipe, executor and budget harness used by protocol suites. Consumers: h12tiny-web, h12tiny and downstream websocket consumers; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: cargo test -p laputa-fastwebsockets-futures-lite -p laputa-protocol-test-support; cargo clippy -p laputa-fastwebsockets-futures-lite -p laputa-protocol-test-support --all-targets; then make test and make lint; the deslop Dead code acceptance holds within this component.
 - **Fix with:** deslop
 - **Effort:** M
 
