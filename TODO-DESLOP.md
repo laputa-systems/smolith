@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 48
+Next: 49
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier D). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After the component tickets (DSLP-3 to DSLP-41, ordered Types, Tests, Dead code), work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -15,33 +15,6 @@ Not started.
 - **Where:** AGENTS.md, Makefile, .github/workflows/
 - **Problem:** Base 347b1d2; code lines Rust 115.2k, Python 2.9k (fleet/loc/v1, vendored included); timings not yet measured. Open fleet lint findings: mdtool 82, gha-syntax 10, linux-musl-toolchain 5, laputa-rustix 4, no-formatters 4, rust-collections 3, audit-upgrades 1, make-clean-target 1, and 2 more. Over 50k lines, so Types, Tests, and Dead code run per component; largest first-party groups: crates/laputa-h2-futures-lite (39k), crates/laputa-hyper-futures-lite (32k), crates/futures-lite (8k), crates/h12tiny (7k), crates/async-task (6k), crates/async-lock (5k), crates/polling (5k), crates/h12tiny-client (5k), and 2 more. Consumers in the fleet: bctl, ctrs, laputa, soulseek-rs, stats, stuff, tansu, xsh; their tests are the consumer check for API changes. Perf gate: decide in Ground whether a user-visible hot path needs a workload.
 - **Recommendation:** Run the deslop Ground step. Accept: CI runs make test and is green, and AGENTS.md has a Verification section.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-17 · P2 · Types: repository tools, benchmarks and CI
-
-- **Area:** deslop · types · repository tools, benchmarks and CI
-- **Where:** tools, scripts, tests (Python suites, tests/consumer, tests/qualify), benchmarks/twelve-dollar, fixtures, Makefile and .github
-- **Problem:** Scope: about 15k lines of Rust, Python, shell and workflow files, all first-party. Contracts: release, staging, graph-gate, consumer and benchmark command contracts. Consumers: maintainers, CI and the external consumer fixture; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Measure the applicable strict candidates; fix witnessed typing defects; keep behavior and record adopted and rejected settings with counts. Acceptance: python3 -m unittest discover -s tests -p "test_*.py"; tools/graph-gate.sh; cargo test -p smolith-qualify; then make test and make lint; the deslop Types acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-29 · P2 · Tests: repository tools, benchmarks and CI
-
-- **Area:** deslop · tests · repository tools, benchmarks and CI
-- **Where:** tools, scripts, tests (Python suites, tests/consumer, tests/qualify), benchmarks/twelve-dollar, fixtures, Makefile and .github
-- **Problem:** Scope: about 15k lines of Rust, Python, shell and workflow files, all first-party. Contracts: release, staging, graph-gate, consumer and benchmark command contracts. Consumers: maintainers, CI and the external consumer fixture; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Audit boundary coverage, run a bounded mutation pass on the critical contracts (cargo-mutants and cargo-llvm-cov are not installed here; record Needs environment if still absent), disposition critical survivors and hold warm test cost. Acceptance: python3 -m unittest discover -s tests -p "test_*.py"; tools/graph-gate.sh; cargo test -p smolith-qualify; then make test and make lint; the deslop Tests acceptance holds within this component.
-- **Fix with:** deslop
-- **Effort:** M
-
-### DSLP-41 · P2 · Dead code: repository tools, benchmarks and CI
-
-- **Area:** deslop · dead code · repository tools, benchmarks and CI
-- **Where:** tools, scripts, tests (Python suites, tests/consumer, tests/qualify), benchmarks/twelve-dollar, fixtures, Makefile and .github
-- **Problem:** Scope: about 15k lines of Rust, Python, shell and workflow files, all first-party. Contracts: release, staging, graph-gate, consumer and benchmark command contracts. Consumers: maintainers, CI and the external consumer fixture; run their tests against the candidate for any API-visible change. Upstream-derived crates are reviewed only where they diverge from UPSTREAM.toml; pristine upstream stays untouched.
-- **Recommendation:** Run the dead-code tools (rustc dead_code, cargo-machete, cargo +nightly udeps where installed), then debloat; prove callers and consumers before each cut and file walk-backs as Needs owner tickets. Acceptance: python3 -m unittest discover -s tests -p "test_*.py"; tools/graph-gate.sh; cargo test -p smolith-qualify; then make test and make lint; the deslop Dead code acceptance holds within this component.
 - **Fix with:** deslop
 - **Effort:** M
 
@@ -61,6 +34,15 @@ Not started.
 - **Problem:** CI compiles the ffi feature under RUSTFLAGS=--cfg hyper_unstable_ffi (cargo check, ci.yml:42-43) but no repository check runs its tests or builds capi, and no workspace crate or documented consumer uses the C API (docs/deslop-hyper-rt.md, DSLP-37). It is inherited upstream surface with no evidence that it works in this fork.
 - **Recommendation:** Owner decision: either remove the ffi feature, src/ffi and capi from the fork, or keep them and add an executed FFI test lane (cargo test --features ffi under the unstable cfg) to CI.
 - **Fix with:** dead-code-archaeology
+- **Effort:** S
+
+### DSLP-48 · P3 · CI verify job has no timeout
+
+- **Area:** Needs owner · CI
+- **Where:** .github/workflows/ci.yml:23
+- **Problem:** The verify job runs make test with no timeout-minutes. A hung test (accept_descriptor_exhaustion before #24) held a Linux runner for over an hour before it was cancelled by hand (docs/deslop-repo-tools.md, DSLP-41).
+- **Recommendation:** Owner decision on CI work: add timeout-minutes to the verify and macOS test jobs, sized from recent run durations (about 6 minutes) with headroom.
+- **Fix with:** deslop
 - **Effort:** S
 
 ### DSLP-46 · P4 · Lint baseline: the Hyper fork inherits the upstream clippy restriction group and make lint reports about 2,400 diagnostics
