@@ -7,4 +7,4 @@ stops the blocking and futures-I/O clients from diverging on default ports,
 IPv6 authorities, or `CONNECT` targets.
 
 This crate is an implementation detail of `h12tiny-client` and
-`h12tiny-client-sync`. See the [client guide](../../docs/client.md).
+`h12tiny-client-sync`. See the [client guide](../../docs/h12tiny/client.md).

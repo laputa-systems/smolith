@@ -98,7 +98,7 @@ offerings remain explicit caller policy.
 Removing a root does not reject an intermediate that chains to another trusted
 anchor. The workspace requires `rustls-webpki 0.103.16` or later, whose verifier
 rejects the distrusted intermediate public keys covered by the
-[system-trust fixtures](../tests/support/tls_system.rs). Host-store updates
+[system-trust fixtures](../../crates/h12tiny/tests/support/tls_system.rs). Host-store updates
 and verifier updates remain separate requirements.
 
 ## Server side

@@ -13,5 +13,5 @@ No feature is enabled by default.
 - `tls`: HTTPS with Rustls and operating-system trust from `h12tiny-tls-system`.
 
 Most applications depend on the `h12tiny` facade with its `client` feature
-instead of this crate. See the [client guide](../../docs/client.md) for pooling
+instead of this crate. See the [client guide](../../docs/h12tiny/client.md) for pooling
 and request behavior.

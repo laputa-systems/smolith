@@ -18,4 +18,4 @@ No feature is enabled by default.
   application message policy.
 - `websocket-client`: the client opening handshake over a caller-dialed stream.
 
-See the [application layer guide](../../docs/application.md).
+See the [application layer guide](../../docs/h12tiny/application.md).

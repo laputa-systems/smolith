@@ -5,4 +5,4 @@ Its inherited Tokio transports require adaptation to the fork's futures-I/O
 traits before these tests can run. The focused futures-I/O flow-control
 regression is in [`../flow_control_futures.rs`](../flow_control_futures.rs).
 Run it with the H2 flow-control command in
-[verification](../../../../docs/verification.md).
+[verification](../../../../docs/h12tiny/verification.md).

@@ -36,5 +36,5 @@ selects Hyper's HTTP/1.1 client without the server crate. HTTP/2 extended CONNEC
 Feature isolation is part of the observable contract: an H1-only build does
 not acquire H2, a client-only build does not acquire server/web, plain util
 does not acquire JSON, and plain web does not acquire JSON, query, or
-WebSocket support. Run [the feature check](../scripts/check-features.sh) after
+WebSocket support. Run [the feature check](../../scripts/check-features.sh) after
 changing this topology.

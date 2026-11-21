@@ -2,4 +2,4 @@
 
 Follow the repository's [working instructions](../../../AGENTS.md).
 Do not run formatters. Run the relevant checks in the
-[verification guide](../../../docs/verification.md).
+[verification guide](../../../docs/h12tiny/verification.md).

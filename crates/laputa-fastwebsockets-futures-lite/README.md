@@ -22,8 +22,8 @@ acquisition fails. Direct `Frame::mask` calls return `std::io::Result<()>`.
 
 This fork has no `upgrade`, `handshake`, or Axum integration features.
 For an HTTP server handshake and upgraded transport, use h12tiny's
-[`websocket` feature](../../docs/application.md#router) and
-[interop test](../../tests/websocket_interop.rs).
+[`websocket` feature](../../docs/h12tiny/application.md#router) and
+[interop test](../h12tiny/tests/websocket_interop.rs).
 Applications own subprotocols, authentication, task ownership, and message policy.
 Compression is unsupported.
 

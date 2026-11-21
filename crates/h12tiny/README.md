@@ -53,17 +53,17 @@ For the blocking client, enable `client-sync`; its `ResponseBody` implements
 `std::io::Read`. For a server, enable `server` and `http1` and/or `http2`;
 add `web` for the optional router. TLS client defaults and custom trust
 settings are described in
-[TLS configuration](docs/tls.md).
+[TLS configuration](../../docs/h12tiny/tls.md).
 
 ## Choose features
 
 Choose a role and only the protocols it needs; protocol flags alone do not add
 a client or server. The complete facade and component feature table, including
 the role-selecting `upgrade` and `websocket` features, is in
-[feature selection](docs/features.md).
+[feature selection](../../docs/h12tiny/features.md).
 
 Concrete client, server, and web timeouts and size limits are in
-[limits](docs/limits.md).
+[limits](../../docs/h12tiny/limits.md).
 
 ## License
 

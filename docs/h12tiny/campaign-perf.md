@@ -133,7 +133,7 @@ Commit boundaries: root `exclude` is `build(twelve-dollar)`; harness and app are
 | Attribution | M4 table and the bottleneck verdict (HTTP and connections, router and allocation, JWT and JSON, SQLite read, SQLite write contention, scheduler, memory, network and proxy) | one named dominant limit with the numbers behind it | a verdict without a measurement |
 | Report | `REPORT.md` answers: concurrent users supported locally; nginx versus direct; CPU/request, throughput, tail latency, memory; whether the limit is h12tiny, SQLite, auth, or the runtime; whether more h12tiny work would help materially; the matched Axum comparison | each question answered with a figure or "not measured, reason" | speculation presented as a result |
 | Isolation | `sh scripts/check-normal-dependencies.sh`; `cargo package --list --allow-dirty \| rg '^benchmarks/'` empty; the forbidden-crate `cargo tree` check; `git -C .work/twelve-dollar/challenge status --porcelain` empty | all clean | any hit |
-| Library gates, only if library code changed | per touched crate: its tests and `cargo clippy -p <crate> --all-features`; then once at close `scripts/check-features.sh`, `sh scripts/check-msrv.sh`, `scripts/miri-io.sh` if the I/O adapter changed, and the fork checks in [verification](docs/verification.md) if a fork changed | green | red; report the cost before running the heavy ones |
+| Library gates, only if library code changed | per touched crate: its tests and `cargo clippy -p <crate> --all-features`; then once at close `scripts/check-features.sh`, `sh scripts/check-msrv.sh`, `scripts/miri-io.sh` if the I/O adapter changed, and the fork checks in [verification](verification.md) if a fork changed | green | red; report the cost before running the heavy ones |
 
 Success is a locally measured, reproducible result. A server that cannot be measured because a resource is missing is reported with exactly what blocked it, never with an estimate.
 
@@ -154,7 +154,7 @@ Success is a locally measured, reproducible result. A server that cannot be meas
 
 **Contract changes:** none planned. Root `exclude` only changes packaging.
 
-**Needs owner (does not block the campaign):** whether `Serve::production()` should stop applying its 10 s header-read timeout to idle keep-alive connections. Recommendation: document it in [limits](docs/limits.md) and add a separate idle-timeout bound later; the campaign only reports it.
+**Needs owner (does not block the campaign):** whether `Serve::production()` should stop applying its 10 s header-read timeout to idle keep-alive connections. Recommendation: document it in [limits](limits.md) and add a separate idle-timeout bound later; the campaign only reports it.
 
 ## Reference: verified code map
 
@@ -162,5 +162,5 @@ Success is a locally measured, reproducible result. A server that cannot be meas
 - Router: `crates/h12tiny-web/src/lib.rs` has `Router::fallback` (`:1197`), `body_limit` (`:1188`), `production` (`:1116`), `Path<T>` (`:544`).
 - Existing runnable pattern for an executor, listener, and router: `examples/router-server.rs`.
 - Facade exports used by that example: `h12tiny::{io, runtime, server, web}` in `src/lib.rs`.
-- Prior in-repo performance method (CPU per request, A/B discipline): [docs/performance/README.md](docs/performance/README.md).
+- Prior in-repo performance method (CPU per request, A/B discipline): [performance/README.md](performance/README.md).
 - Challenge sources of truth: `SPEC.md`, `test/test.sh`, `bench/load.js`, `bench/nginx.conf`, `seed/make-seed.sh`, `schema.sql`, and the scoring rules in the challenge `README.md` and `LEADERBOARD.md`, all in `.work/twelve-dollar/challenge/`.

@@ -6,4 +6,4 @@ Explicit root stores and caller-provided verifiers stay under caller control and
 are never merged with system trust. Managed system-trust configurations disable
 session resumption so every new connection checks current trust.
 
-See the [TLS guide](../../docs/tls.md).
+See the [TLS guide](../../docs/h12tiny/tls.md).

@@ -11,4 +11,4 @@ connection reuse.
 
 - `tls`: HTTPS with Rustls and operating-system trust from `h12tiny-tls-system`.
 
-See the [client guide](../../docs/client.md).
+See the [client guide](../../docs/h12tiny/client.md).
