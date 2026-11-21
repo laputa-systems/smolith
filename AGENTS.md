@@ -37,6 +37,8 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 - [docs/release.md](docs/release.md) separates the version, a git tag, packaged crates, and publication.
 - [docs/BASELINES.md](docs/BASELINES.md) records the idle, wake, and TCP figures.
 - [docs/LEDGER.md](docs/LEDGER.md) is the historical upstream issue, pull request, and advisory snapshot.
+- Deslop component audits: [runtime scheduling](docs/deslop-runtime-scheduling.md), [runtime I/O](docs/deslop-runtime-io.md), [runtime facade](docs/deslop-runtime-facade.md), [h2 framing](docs/deslop-h2-framing.md), [h2 proto](docs/deslop-h2-proto.md), [h2 api](docs/deslop-h2-api.md), [Hyper h1](docs/deslop-hyper-h1.md), [Hyper glue](docs/deslop-hyper-glue.md), [Hyper runtime](docs/deslop-hyper-rt.md), [websocket](docs/deslop-websocket.md), [h12tiny client](docs/deslop-h12tiny-client.md), [h12tiny server](docs/deslop-h12tiny-server.md), [repo tools](docs/deslop-repo-tools.md); findings from the audits' diagnosis are in [diagnose](docs/deslop-diagnose.md).
+- [docs/h12tiny/](docs/h12tiny/) holds the HTTP stack's guides: architecture, client, server, TLS, application layer, features, limits, and fork verification. Its router is [docs/h12tiny/AGENTS.md](docs/h12tiny/AGENTS.md).
 - [TODO.md](TODO.md) holds current findings and deferred work.
 - [UPSTREAM.toml](UPSTREAM.toml) is the provenance map.
 - [SECURITY.md](SECURITY.md) is the reporting path.

@@ -13,4 +13,4 @@ No feature is enabled by default.
 - `tls`: HTTPS with Rustls.
 - `upgrade`: raw HTTP/1 upgrades; implies `http1`.
 
-See the [server guide](../../docs/server.md).
+See the [server guide](../../docs/h12tiny/server.md).

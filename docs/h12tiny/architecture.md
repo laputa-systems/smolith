@@ -33,7 +33,7 @@ connection policy, normalization, pooling, runtime adaptation, lifecycle, and
 server protocol selection.
 
 The repository includes the Laputa Hyper, H2, and fastwebsockets crates under
-[`crates/`](../crates/). h12tiny and Hyper use local path dependencies for
+[`crates/`](../../crates/). h12tiny and Hyper use local path dependencies for
 those packages. Packaging removes the local paths and retains the declared
 version requirements. Publish any missing runtime and fork dependencies before
 their dependents. See [verification](verification.md). The fork packages keep
@@ -48,7 +48,7 @@ of the async stack and uses `std::net` plus optional synchronous Rustls.
 The normal dependency graph must stay free of transport stacks and general
 framework dependencies such as Tokio, native TLS, Hyper-util, Reqwest, Tower,
 Axum, and URL-processing stacks. The full forbidden package set is enforced on
-the enabled normal graph by [the dependency check](../scripts/check-normal-dependencies.sh);
+the enabled normal graph by [the dependency check](../../scripts/check-normal-dependencies.sh);
 Cargo.lock also contains optional and development packages and is not that
 check.
 

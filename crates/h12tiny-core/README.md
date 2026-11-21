@@ -5,4 +5,4 @@ bridge and the runtime-neutral executor and timer boundary. It has no client
 policy, server accept loop, TLS, routing, JSON, or application abstractions.
 
 Applications normally use the `h12tiny` facade instead of this crate. See
-[architecture](../../docs/architecture.md) for crate ownership.
+[architecture](../../docs/h12tiny/architecture.md) for crate ownership.

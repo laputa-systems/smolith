@@ -8,4 +8,4 @@ pools, server listeners, or routing.
 
 - `json`: JSON bodies through `deser` and `deser-json`. This is the only serialization surface.
 
-See the [application layer guide](../../docs/application.md).
+See the [application layer guide](../../docs/h12tiny/application.md).

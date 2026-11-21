@@ -83,4 +83,4 @@ Those observations are single-run diagnostics, not a benchmark score or a
 replacement for server-side metrics.
 
 Build, feature-isolation, dependency, and test commands are listed in
-[`docs/verification.md`](../docs/verification.md).
+[`docs/h12tiny/verification.md`](../docs/h12tiny/verification.md).
