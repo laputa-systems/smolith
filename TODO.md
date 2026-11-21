@@ -1,5 +1,41 @@
 Prefix: SMOL
-Next: 14
+Next: 18
 
 HTTP findings use the H12T prefix and stay in [docs/h12tiny/TODO.md](docs/h12tiny/TODO.md). Their numbers are unchanged.
+
+### SMOL-14 · P3 · h12tiny-server: an established HTTP/2 connection with no streams has no idle bound
+
+- **Area:** deslop · diagnose · HTTP server lifecycle
+- **Where:** crates/h12tiny-server/src/lifecycle.rs (production), crates/h12tiny-server/src/conn/auto.rs (Builder::http2 configuration), docs/h12tiny/limits.md
+- **Problem:** Reproduced at base 5c794c6 (docs/deslop-diagnose.md, `repro_cleartext_h2_preface_then_idle_retains_capacity_after_setup_timeout` in `zz_diag`): a cleartext peer that sends the full HTTP/2 preface and then nothing keeps the only slot beyond the 50 ms setup deadline, because the deadline ends when the preface is detected. HTTP/1 has `header_read_timeout`, which `production()` sets to 10 s and which also bounds an idle keep-alive wait; HTTP/2 has no equivalent, and `production()` configures no HTTP/2 keep-alive interval or idle timeout. This is the same slot-exhaustion exposure as the preface case after the preface, with the documented setup deadline behaving as written, so it is a missing bound rather than a regression.
+- **Recommendation:** Decide the production bound for an HTTP/2 connection with no open streams (an idle timeout, or hyper HTTP/2 keep-alive pings with a timeout, which need the timer `production()` already installs) and record it in docs/h12tiny/limits.md. Revalidate that hyper exposes a suitable knob before choosing; if it does not, the choice belongs to the owner. Acceptance: a regression test shows an idle HTTP/2 peer is closed under `production()` while a connection with an active stream is not; make test and make lint.
+- **Fix with:** lifecycle-concurrency
+- **Effort:** M
+
+### SMOL-15 · P3 · Hyper FFI and capi are compiled but neither executed nor consumed
+
+- **Area:** Needs owner · Hyper FFI
+- **Where:** crates/laputa-hyper-futures-lite/src/ffi/, crates/laputa-hyper-futures-lite/capi/, .github/workflows/ci.yml:42
+- **Problem:** CI compiles the ffi feature under RUSTFLAGS=--cfg hyper_unstable_ffi (cargo check, ci.yml:42-43) but no repository check runs its tests or builds capi, and no workspace crate or documented consumer uses the C API (docs/deslop-hyper-rt.md, DSLP-37). It is inherited upstream surface with no evidence that it works in this fork.
+- **Recommendation:** Owner decision: either remove the ffi feature, src/ffi and capi from the fork, or keep them and add an executed FFI test lane (cargo test --features ffi under the unstable cfg) to CI.
+- **Fix with:** dead-code-archaeology
+- **Effort:** S
+
+### SMOL-16 · P3 · CI verify job has no timeout
+
+- **Area:** Needs owner · CI
+- **Where:** .github/workflows/ci.yml:23
+- **Problem:** The verify job runs make test with no timeout-minutes. A hung test (accept_descriptor_exhaustion before #24) held a Linux runner for over an hour before it was cancelled by hand (docs/deslop-repo-tools.md, DSLP-41).
+- **Recommendation:** Owner decision on CI work: add timeout-minutes to the verify and macOS test jobs, sized from recent run durations (about 6 minutes) with headroom.
+- **Fix with:** deslop
+- **Effort:** S
+
+### SMOL-17 · P4 · Lint baseline: the Hyper fork inherits the upstream clippy restriction group and make lint reports about 2,400 diagnostics
+
+- **Area:** deslop · ground · lint baseline
+- **Where:** crates/laputa-hyper-futures-lite/Cargo.toml ([lints.clippy] restriction = warn), crates/laputa-h2-futures-lite/Cargo.toml and crates/h12tiny-client/Cargo.toml (manifest warnings)
+- **Problem:** `make lint` exits 0 but prints about 2,400 warning diagnostics (65 distinct messages) at base 5c794c6: 673 `unwrap()` on a Result, 408 `#[test]` outside a `#[cfg(test)]` module, 301 `allow` without a reason, 284 `#[allow]`, mostly in the Hyper fork and its tests because the fork keeps hyper's `restriction` group at warn. The manifests also warn about `package.readme` (`cargo::manual_readme`) in both protocol forks and about unused dependencies (h12tiny-client: `futures-util`, `h12tiny-client-normalize`, `h12tiny-core`; h12tiny-server: `async-net`, `futures-util`, `h12tiny-core`). No lint is denied, so a real warning cannot stand out and CI cannot gate on a clean run.
+- **Recommendation:** In the Types and Dead code tickets for the Hyper and h12tiny components: remove the six unused dependency entries after checking each feature set (the compiler reports them for the default `make lint` feature set only), drop or silence `readme` only if the owner wants it, and decide whether the fork keeps the restriction group; if it stays, allow the groups that are upstream style in tests with one reasoned entry each. Do not edit pristine upstream files for style. Acceptance: make lint warning count recorded before and after in the PR.
+- **Fix with:** deslop
+- **Effort:** M
 
