@@ -45,6 +45,8 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 
 ## Verification
 
+`make clean` removes this checkout’s build output in `./target`. It refuses symlinks and ordinary files at those paths.
+
 - `make test` (workspace, h12tiny all features, maintained Hyper suites) and `make lint` (clippy; exits 0 with about 2,400 warning diagnostics, none denied). CI runs each as one step in job `verify` of `.github/workflows/ci.yml`; the macOS job runs `cargo test --workspace`.
 - Costs, macOS aarch64 18 cores, busy host (load 12-15), observations: `make test` cold 1,757 s (exit 0; a duplicate run shared the target directory, so an upper bound), warm 210 s (2,562 passed, 32 ignored); `make lint` cold 1,329 s, warm 2 s. Cold means an empty target directory with the kache wrapper active. Set `CARGO_BUILD_JOBS=4` and `TMPDIR=$PWD/.work/tmp`.
 - Runtime facade, traits and package graph: `tests/consumer/check.sh`, `tools/graph-gate.sh`, `sh scripts/check-features.sh`, `sh scripts/check-normal-dependencies.sh`, and each crate's tests.
