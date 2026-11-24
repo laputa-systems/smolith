@@ -8,7 +8,7 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 
 - `make test` runs the workspace suite, the h12tiny suite with all features, and the maintained Hyper tests.
 - `make lint` is clippy for the workspace and for the maintained HTTP and Hyper targets. This repo has no rustfmt.
-- `python3 -m unittest discover -s tests -p 'test_*.py'` checks release-graph validation and staging isolation without compiling Rust.
+- `python3 -m unittest discover -s tests -p 'test_*.py'` checks release-graph validation and staging isolation without compiling Rust. Use Python 3.11 or later: the tools import `tomllib`.
 - `tools/graph-gate.sh` checks owned edges and rejects `tokio` on all dependency kinds.
 - `tools/advisory-scan.sh` maps `UPSTREAM.toml` through the RustSec database, including optional normal features. `--offline` skips the refresh.
 - `tools/stage.sh` publishes every owned crate to a local registry and builds consumers from that index.
@@ -38,7 +38,6 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 - [docs/release.md](docs/release.md) separates the version, a git tag, packaged crates, and publication.
 - [docs/BASELINES.md](docs/BASELINES.md) records the idle, wake, and TCP figures.
 - [docs/LEDGER.md](docs/LEDGER.md) is the historical upstream issue, pull request, and advisory snapshot.
-- Deslop component audits: [runtime scheduling](docs/deslop-runtime-scheduling.md), [runtime I/O](docs/deslop-runtime-io.md), [runtime facade](docs/deslop-runtime-facade.md), [h2 framing](docs/deslop-h2-framing.md), [h2 proto](docs/deslop-h2-proto.md), [h2 api](docs/deslop-h2-api.md), [Hyper h1](docs/deslop-hyper-h1.md), [Hyper glue](docs/deslop-hyper-glue.md), [Hyper runtime](docs/deslop-hyper-rt.md), [websocket](docs/deslop-websocket.md), [h12tiny client](docs/deslop-h12tiny-client.md), [h12tiny server](docs/deslop-h12tiny-server.md), [repo tools](docs/deslop-repo-tools.md); findings from the audits' diagnosis are in [diagnose](docs/deslop-diagnose.md).
 - [docs/h12tiny/](docs/h12tiny/) holds the HTTP stack's guides: architecture, client, server, TLS, application layer, features, limits, and fork verification. Its router is [docs/h12tiny/AGENTS.md](docs/h12tiny/AGENTS.md).
 - [TODO.md](TODO.md) holds current findings and deferred work.
 - [UPSTREAM.toml](UPSTREAM.toml) is the provenance map.
@@ -55,6 +54,6 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 - HTTP/1 wire parsing and framing: `crates/h12tiny/tests/adversarial_h1.rs`, `raw_h1.rs`, and the Hyper `proto/h1` unit tests; HTTP/2 framing, HPACK and flow control: `crates/laputa-h2-futures-lite/tests/h2-tests/` and `tests/flow_control_futures.rs`; fork parity: `sh scripts/verify-protocols.sh`, with [the ledger](docs/h12tiny/fork-test-parity.md).
 - Websocket wire and web routing: `crates/h12tiny/tests/web_transport.rs`, `websocket_interop.rs`, and the `laputa-fastwebsockets-futures-lite` tests. Release graph and staging: `python3 -m unittest discover -s tests -p 'test_*.py'`.
 - Performance workloads: `cargo run --release -p smolith-qualify --bin baseline` (idle CPU, wake latency, TCP loopback; [docs/BASELINES.md](docs/BASELINES.md)) for the runtime, and `benchmarks/twelve-dollar/README.md` for HTTP serving.
-- Components, each audited as one deslop slice (about 20k lines or less; records in `docs/deslop-*.md`): runtime scheduling and synchronization; runtime I/O, processes and blocking; runtime facade and utilities; HTTP/2 framing and compression; HTTP/2 connection and streams; HTTP/2 client, server and test support; HTTP/1 protocol; Hyper client, server, body and HTTP/2 glue; Hyper runtime traits, extensions and FFI; websocket and protocol test support; HTTP facade and clients; HTTP server and web utilities; repository tools, benchmarks and CI.
+- Components: runtime scheduling and synchronization; runtime I/O, processes and blocking; runtime facade and utilities; HTTP/2 framing and compression; HTTP/2 connection and streams; HTTP/2 client, server and test support; HTTP/1 protocol; Hyper client, server, body and HTTP/2 glue; Hyper runtime traits, extensions and FFI; websocket and protocol test support; HTTP facade and clients; HTTP server and web utilities; repository tools, benchmarks and CI.
 - Upstream-derived trees are recorded with repository, branch, commit and released version in [UPSTREAM.toml](UPSTREAM.toml). Review only local divergence: about 8k changed lines across the forks, most in async-task, async-executor, hyper (1.1k) and h2 (0.9k plus the 2k-line `futures_codec`). Without a registry copy to diff, smol-macros, easy-parallel, fastrand-contrib and fastwebsockets count as ours.
 - Consumers: stuff (published `h12tiny-*` crates), the external runtime consumer in `tests/consumer/`, and the fleet repositories bctl, ctrs, laputa, soulseek-rs, stats, tansu and xsh.
