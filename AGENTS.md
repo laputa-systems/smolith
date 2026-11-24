@@ -32,6 +32,7 @@ Runtime crates share the version in `Cargo.toml`. HTTP crates share a separate v
 
 ## Docs
 
+- [docs/roadmap.md](docs/roadmap.md) holds the single plan and its Status handoff.
 - [docs/FEATURES.md](docs/FEATURES.md) lists crate features.
 - [docs/platforms.md](docs/platforms.md) records hosts, gaps, and what still needs a machine.
 - [docs/release.md](docs/release.md) separates the version, a git tag, packaged crates, and publication.

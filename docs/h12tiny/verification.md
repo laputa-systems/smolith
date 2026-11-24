@@ -57,6 +57,11 @@ local regressions. The flow-control regression uses futures-I/O and a
 wake-driven executor to check `WINDOW_UPDATE` after capacity release and read
 the next data frame. The shared support crate includes a missing-wake control.
 
+The fork tests preserve upstream behavior while using futures I/O. The ledger
+records exclusions and covering tests; `--check-ledger` checks the test counts
+and refuses unported rows. The shared support crate is dev-only. The h2#975
+regression and its wake-loss negative control are described in the ledger.
+
 The pinned nightly is the development toolchain; see the
 [current compiler requirements](../README.md#add-it) for consumers.
 

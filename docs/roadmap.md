@@ -1,31 +1,37 @@
-# Campaign: h12tiny on the Twelve Dollar Server Challenge, measured locally
+# Roadmap
+
+This is the single plan for this repository: all current and future work, and the handoff for resuming it. Campaigns are sections below, and their items interleave in **Sequence**. "Resume the roadmap" means continue from **Status**.
 
 ## Status
 
-**Goal:** a contained benchmark application that passes the unchanged 42-check suite, a one-command local harness that runs the unchanged `bench/load.js`, measured results, and a report that attributes cost between h12tiny, SQLite, JWT, JSON, nginx, and the runtime. Nothing is submitted anywhere.
+- State: idle; Twelve Dollar M2 is parked on host contention.
+- Last accepted revision: not recorded; the last valid M2 hold used `819cab9`. Integration branch green is unverified.
+- Parked: M2, no branch recorded; retry when `perf-gate-ready` exits 0 before the run.
+- Next: repeat M2 search and both nginx holds on the selected current revision; later benchmark commits invalidate the old revision-specific confirmation.
+- Resume prompt: "resume the roadmap" ("resume the campaign" means the same).
 
-**Base revision:** h12tiny `1c24cdd618bbdd7dcb9ca6b580d191be67b8c518`. **Challenge pin:** `d9de6942dcc3669bac9459603d32516dc230359d`.
+## Sequence
 
-**Accepted:** B0, A1, H1, A2, R1, H2, H3, M1. **Red:** none. **Parked:** M2 (host busy; 1 of 2 holds valid).
+Run benchmark commands from the repository root, using `bash benchmarks/twelve-dollar/run.sh`. M2 is parked until the host is free; subsequent slices wait for their prerequisites.
 
-**Next:** run the second nginx 5-minute hold at 14,000 VUs under `819cab9` when the host is free, then M2 is complete. Do not commit the pending `tools/search.sh` gate-deferral fix until after that hold.
+| ID | Campaign | Slice | Prerequisites | Owned files | Acceptance |
+| --- | --- | --- | --- | --- | --- |
+| `M2` | Twelve Dollar | Mode A search and confirmation (D8) | M1, H3 | none | `bash benchmarks/twelve-dollar/run.sh box search --mode nginx` then `bash benchmarks/twelve-dollar/run.sh box confirm --mode nginx` print the score or the "passes at the ceiling" line, both holds' p50/p95/p99, failure rate, throughput, and resource figures |
+| `M3` | Twelve Dollar | Mode B search and confirmation, plus the direct-mode connection study: peak open connections, RSS per idle connection (RSS delta between 0 and the held-VU plateau divided by connections), fd use, rejection count | M2 | none | same as M2 with `--mode direct`; the study table is in the report |
+| `M4` | Twelve Dollar | Attribution (spec items A to D). **B:** `h12tiny-static` serves prebuilt responses of the real sizes (captured from the seeded DB: feed, post, like, create) through the same router and server config, no SQLite, no JWT. **C:** `attribution` replays the load's query mix (feed : post : like : create = 1 : 1 : 0.15 : 0.02) through `app-core` alone, single-threaded and through the real reader/writer arrangement, measuring CPU per call and latency. **D:** microbenchmarks of route dispatch, JWT verification, and JSON serialization. Then run B under the same k6 load at the confirmed VU level and compute CPU per request for A, B, C, D, the nginx share, and the unexplained remainder (connection management, scheduling, syscalls); profile per D13 | M3 | `benchmarks/twelve-dollar/crates/attribution/**`, `benchmarks/twelve-dollar/crates/h12tiny-app/src/bin/h12tiny-static.rs` | `run.sh box attribute` writes one table with CPU per request and its percentage of A for each component; the components and the remainder sum to A within 5 %, otherwise the report states the gap and why |
+| `E1` | Twelve Dollar | `axum-ref` sharing `app-core`, the same worker arrangement and thread count, the same release profile; the 42 checks green; then CPU per request and the box search in Mode A only. Tokio's worker count equals the h12tiny executor's | M4 | `benchmarks/twelve-dollar/crates/axum-ref/**`, `benchmarks/twelve-dollar/axum-ref/{build.sh,start.sh}` | `bash .work/twelve-dollar/challenge/test/run.sh benchmarks/twelve-dollar/axum-ref` (its own `build.sh` and `start.sh`) ends `passed=42 failed=0`; `cargo tree -p h12tiny-app -e normal` is still free of the forbidden crates; one comparison table with identical workload, hardware, and flags. The report may say one stack is faster only if its CPU-per-request difference exceeds the run-to-run spread; otherwise it says "no measurable difference" |
+| `O1` | Twelve Dollar | Optimization per D14, only if the gate passes | E1 | library crates only as needed; benchmark app tuning (reader count, statement use) is kept in `benchmarks/` and never credited to h12tiny | for each change: the narrow crate test, then the interleaved A/B; kept changes ship with a test that fails without them |
+| `C1` | Twelve Dollar | Close: delete scratch scripts and dead harness paths (prove liveness with `rg` over `run.sh` and `box/`); write `benchmarks/twelve-dollar/REPORT.md` (curated tables, run IDs, commit SHAs, raw paths under `.work/twelve-dollar/results/`, limitations, answers to the questions below); run the `review` skill over the campaign's diff and fix demonstrated defects; run the gates below | all | `benchmarks/twelve-dollar/{README.md,REPORT.md}`, `docs/` only if a documented behavior changed | see **Acceptance** |
 
-Update this block in place after each accepted slice. `campaign-perf.md` stays untracked; never stage it.
+## Campaign: Twelve Dollar local benchmark
 
-## Charter
+### Goal and state
 
-- Decide and keep going. Record a decision (under Decisions, or in `benchmarks/twelve-dollar/README.md` for method details) only when a later slice depends on it.
-- The owner authorizes everything in **Execution boundary** and nothing else. Park an item that needs more.
-- Hard stops, each of which parks the item: pushing (always forbidden), an action outside this repo and the Docker resources named below, any change to a tracked file of the challenge checkout, a submission or any contact with the challenge's GitHub beyond the one-time clone, and a loop that cannot check anything.
-- Failing item: find the cause before retrying (`root-cause`). After 3 attempts without a new cause, move the work to `git switch -c park/<id>`, commit it there with the cause and a retry condition in the body, return to `main`, and continue with the next unblocked item. Red work never lands on `main`.
-- Fix egregious problems met on the way in their own commit: a build or test red for 10 minutes or more that blocks a slice, or a harness step that wastes more than 5 minutes per run. Record anything else in the report and leave it.
-- Parity before optimization. Phases: P0 ground, P1 parity (B0 to H3), P2 measurement and attribution (M1 to M4, E1), P3 optimization (O1), P4 close (C1). O1 does not start before M4 is accepted.
-- One writer by default, working in the main tree. Parallel lanes only for the pairs named under **Sequence**, each in a worktree at `.work/wt/<lane>`, following the worktree lifecycle in the `orchestrate` skill. No lane runs while a timed benchmark runs.
-- After each accepted slice, run the parent steering checkpoint from `orchestrate`'s `references/campaigns.md` and rewrite **Status** only if the ruling changed.
-- Every commit is a Conventional Commit with scope `twelve-dollar` (or the library crate for a library fix), the item ID in the body, and the attribution trailer from the session. Stage only your own files. No code comments, no formatters, no pushes.
-- Never invent a number. A figure in the report comes from a saved k6 summary, a cgroup or `/proc` counter, or `time -l` output. If a measurement cannot run, say what blocked it.
+Parked at M2. Build a local challenge application and reproducible harness, pass the unchanged 42 checks, and attribute cost across h12tiny, SQLite, JWT, JSON, nginx and the runtime. Nothing is submitted. B0, A1, H1, A2, R1, H2, H3 and M1 were accepted; M2 has one valid historical hold.
 
-## Decisions
+The original base was h12tiny `1c24cdd618bbdd7dcb9ca6b580d191be67b8c518`, and the challenge pin was `d9de6942dcc3669bac9459603d32516dc230359d`. The repository layout and benchmark dependencies have changed since; verify the recorded commands and decisions against the current tree before resuming.
+
+### Decisions
 
 **Owner (from the draft, binding):**
 
@@ -65,7 +71,7 @@ Update this block in place after each accepted slice. `campaign-perf.md` stays u
 
 **Delegated (record in the README only if a later slice depends on it):** reader-thread count N (D5); the executor thread count; the exact nginx main-config text; the generator ceilings (H3); the shape of the static responses in the HTTP-only reference.
 
-## Reference comparison (local, not a leaderboard score)
+### Reference comparison (local, not a leaderboard score)
 
 The local clone's `LEADERBOARD.md` scores every entry on a 1 vCPU / 2 GB Synteq VPS (Xeon Platinum 8260 at 2.4 GHz) with separate 16-core generators, a fresh database per probe, and a 5-minute hold; score = most users held with p95 < 500 ms, p99 < 1 s and errors < 1 %. Ours runs on the M5 Max / OrbStack box in D6, so hardware is not comparable; CPU per request and the request mix are the useful shape.
 
@@ -83,7 +89,7 @@ Local rows are 2-minute probes (M2), one 5-minute confirmation hold, and 60-seco
 
 What the numbers say: the top entries spend roughly 26–34 µs of app CPU per request; this app spends 76–85 µs (108–121 µs including nginx), about 2.5–3.4× more work per request, against leaders that use io_uring and direct SQLite B-tree reads. The local VU figure is not a score. M4 attribution must say how much of the 85 µs is h12tiny-owned before any optimization; D14's 20 % gate still applies, and a redesign waits for the floor above.
 
-## Baseline
+### Baseline
 
 Measured 2026-11-01 on the base revision; the executor must not mistake these for its own failures.
 
@@ -98,53 +104,30 @@ Measured 2026-11-01 on the base revision; the executor must not mistake these fo
 
 The challenge's own test counts exactly 42 `ok` assertions (13 reads and health/404/id checks, 9 auth, 6 validation, 14 create/like/read-back). `test/run.sh` needs `seed/feed.db` in the challenge checkout, builds via `<dir>/build.sh`, starts `<dir>/start.sh` in the background and stops it with `pkill -P`, so `start.sh` must end in `exec`.
 
-## Sequence
-
-Each item is one slice with a single local acceptance command. "Owns" lists files the item may edit; items sharing files run serially. Lane pairs that may run in parallel: **A1 ∥ H1** and **R1 ∥ H2**. Everything else is serial.
-
-| ID | Item | Prereq | Owns | Acceptance |
-| --- | --- | --- | --- | --- |
-| **B0** | Ground. Workspace skeleton with its own `[workspace]`, root `exclude` entry, `setup.sh` (clone at pinned rev, run `seed/make-seed.sh`, assert clean checkout), README stub. Time `cargo test --workspace --all-features --no-run` and `cargo clippy -p h12tiny-web --all-features` for the loop table and write the timings into README | none | `Cargo.toml` (root, one line), `benchmarks/twelve-dollar/{Cargo.toml,setup.sh,README.md}` | `bash benchmarks/twelve-dollar/setup.sh` exits 0 with the `OK ... sha256 matches` line; `cargo metadata --no-deps --manifest-path benchmarks/twelve-dollar/Cargo.toml` succeeds; `cargo package --list --allow-dirty 2>/dev/null \| rg '^benchmarks/'` prints nothing |
-| **A1** | `app-core`: config from `SQLITE_PATH`, `JWT_SECRET`, `HOST`, `PORT`; pragmas and reader/writer arrangement (D5); the three queries; JWT HS256 (signature, `exp`, HS256 only, `sub` positive-integer string, `username` string); body validation (trim, empty, more than 500 characters counted as characters not bytes); exact error enum and messages from SPEC.md; post JSON in the spec's key order | B0 | `benchmarks/twelve-dollar/crates/app-core/**` | `cargo test --locked --manifest-path benchmarks/twelve-dollar/Cargo.toml -p app-core`. Tests cover each auth outcome in SPEC.md, expired and `alg=none`, id parsing, 500 versus 501 characters with multibyte text, compact output and key order, a duplicate like returning `already_liked`, read-after-write `like_count`, and concurrent creates from several tasks all committed before returning (built from `schema.sql` on a temp DB) |
-| **H1** | Box topology: image/Dockerfile, volumes, network, nginx main config, `box/*.sh`, `run.sh setup\|test`, cgroup assertions, seed copy, fresh-DB-per-run, stale-process and port-free checks | B0 | `benchmarks/twelve-dollar/{run.sh,box/**,linux/**}` | `bash benchmarks/twelve-dollar/run.sh setup` then `run.sh box-check` prints the stored cgroup values (asserted as in D6), shows nginx answering on port 80 (a 502 is correct with no app running), and confirms the seed volume matches `seed/feed.db` byte for byte (`cmp`) |
-| **A2** | `h12tiny-app`: router with `fallback`, handlers, D4 server configuration, SIGTERM drain, shutdown summary line, `build.sh`, `start.sh` (`exec`) | A1 | `benchmarks/twelve-dollar/crates/h12tiny-app/**`, `benchmarks/twelve-dollar/{build.sh,start.sh}` | `bash .work/twelve-dollar/challenge/test/run.sh benchmarks/twelve-dollar` ends `passed=42 failed=0` three times in a row on macOS; `cargo tree --manifest-path benchmarks/twelve-dollar/Cargo.toml -p h12tiny-app -e normal \| rg -w '(tokio\|axum\|tower\|hyper-util\|reqwest)'` prints nothing |
-| **R1** | Robustness tests that spawn the built binary on a fresh DB copy and speak raw TCP: keep-alive reuse over many requests on one socket; an idle connection still usable after 66 s (this settles D4); request-body fragmentation byte by byte; a slow client that sends headers within the bound and one that does not (closed at the bound); concurrent disconnects mid-request; malformed framing (duplicate `Content-Length`, `Content-Length` plus `Transfer-Encoding`, bad request line) answered without crashing the server; many concurrent writes and duplicate likes giving exactly one `201`; new post visible in the feed; invalid and expired tokens; SIGTERM drains and exits 0; fd count returns to baseline after 1,000 connect-and-close cycles | A2 | `benchmarks/twelve-dollar/crates/h12tiny-app/tests/robustness.rs` | `cargo test --locked --manifest-path benchmarks/twelve-dollar/Cargo.toml -p h12tiny-app --test robustness` (about 90 s because of the idle test) |
-| **H2** | Collector, summarizer, report generator: 1 Hz sampling (D10), k6 summary parsing, per-run `meta.json` (D1 and environment fields from the draft: CPU, kernel, limits, pragmas, N, build flags, VUs, durations), Markdown tables | H1 | `benchmarks/twelve-dollar/{tools/**,box/collect.sh}` | `run.sh box smoke --mode nginx --vus 50` leaves a results directory under `.work/twelve-dollar/results/`; the summarizer's request count equals the k6 stdout total and the nginx access-log line count after excluding nginx 499 client cancellations (whose count is reported), with every non-499 nginx request counted by k6; the report contains every row of the metrics table with units |
-| **H3** | Generator ceiling: drive the static bin (`h12tiny-static`, built here from `h12tiny-app`) with `load.js` at rising VUs until the k6 container reaches 80 % of its CPU or memory or reports dropped iterations; set the Mode A and Mode B ceilings to 80 % of that VU count (and no higher than D8's) | A2, H2 | `benchmarks/twelve-dollar/crates/h12tiny-app/src/bin/h12tiny-static.rs`, `benchmarks/twelve-dollar/tools/ceiling.sh` | `run.sh box ceiling` prints both ceilings and the k6 CPU and memory at the last valid level |
-| **M1** | Smoke: Profile A at 50 and 500 VUs; box nginx and direct at 50 and 500 VUs; choose N (D5) from these and log it | A2, R1, H2 | none (results only) | each smoke run exits 0 with failure rate 0 and valid under D9; summarizer output saved |
-| **M2** | Mode A search and confirmation (D8) | M1, H3 | none | `run.sh box search --mode nginx` then `run.sh box confirm --mode nginx` print the score or the "passes at the ceiling" line, both holds' p50/p95/p99, failure rate, throughput, and resource figures |
-| **M3** | Mode B search and confirmation, plus the direct-mode connection study: peak open connections, RSS per idle connection (RSS delta between 0 and the held-VU plateau divided by connections), fd use, rejection count | M2 | none | same as M2 with `--mode direct`; the study table is in the report |
-| **M4** | Attribution (spec items A to D). **B:** `h12tiny-static` serves prebuilt responses of the real sizes (captured from the seeded DB: feed, post, like, create) through the same router and server config, no SQLite, no JWT. **C:** `attribution` replays the load's query mix (feed : post : like : create = 1 : 1 : 0.15 : 0.02) through `app-core` alone, single-threaded and through the real reader/writer arrangement, measuring CPU per call and latency. **D:** microbenchmarks of route dispatch, JWT verification, and JSON serialization. Then run B under the same k6 load at the confirmed VU level and compute CPU per request for A, B, C, D, the nginx share, and the unexplained remainder (connection management, scheduling, syscalls); profile per D13 | M3 | `benchmarks/twelve-dollar/crates/attribution/**`, `benchmarks/twelve-dollar/crates/h12tiny-app/src/bin/h12tiny-static.rs` | `run.sh box attribute` writes one table with CPU per request and its percentage of A for each component; the components and the remainder sum to A within 5 %, otherwise the report states the gap and why |
-| **E1** | `axum-ref` sharing `app-core`, the same worker arrangement and thread count, the same release profile; the 42 checks green; then CPU per request and the box search in Mode A only. Tokio's worker count equals the h12tiny executor's | M4 | `benchmarks/twelve-dollar/crates/axum-ref/**`, `benchmarks/twelve-dollar/axum-ref/{build.sh,start.sh}` | `bash .work/twelve-dollar/challenge/test/run.sh benchmarks/twelve-dollar/axum-ref` (its own `build.sh` and `start.sh`) ends `passed=42 failed=0`; `cargo tree -p h12tiny-app -e normal` is still free of the forbidden crates; one comparison table with identical workload, hardware, and flags. The report may say one stack is faster only if its CPU-per-request difference exceeds the run-to-run spread; otherwise it says "no measurable difference" |
-| **O1** | Optimization per D14, only if the gate passes | E1 | library crates only as needed; benchmark app tuning (reader count, statement use) is kept in `benchmarks/` and never credited to h12tiny | for each change: the narrow crate test, then the interleaved A/B; kept changes ship with a test that fails without them |
-| **C1** | Close: delete scratch scripts and dead harness paths (prove liveness with `rg` over `run.sh` and `box/`); write `benchmarks/twelve-dollar/REPORT.md` (curated tables, run IDs, commit SHAs, raw paths under `.work/twelve-dollar/results/`, limitations, answers to the questions below); run the `review` skill over the campaign's diff and fix demonstrated defects; run the gates below | all | `benchmarks/twelve-dollar/{README.md,REPORT.md}`, `docs/` only if a documented behavior changed | see **Acceptance** |
-
-Commit boundaries: root `exclude` is `build(twelve-dollar)`; harness and app are `feat(twelve-dollar)`; tests `test(twelve-dollar)`; docs `docs(twelve-dollar)`; a library fix `fix(<crate>)`; a kept optimization `perf(<crate>)`.
-
-## Acceptance
+### Acceptance
 
 | Deliverable | Command or evidence | Success | Failure |
 | --- | --- | --- | --- |
-| Runnable app (5 endpoints) | A2 command | `passed=42 failed=0`, three runs, each on a fresh DB copy | any `FAIL`, or a rerun on a used DB (invalid) |
-| Extra cases | R1 command | all tests pass | any failure; flaky tests are fixed, not retried |
+| Runnable app (5 endpoints) | `bash .work/twelve-dollar/challenge/test/run.sh benchmarks/twelve-dollar` | `passed=42 failed=0`, three runs, each on a fresh DB copy | any `FAIL`, or a rerun on a used DB (invalid) |
+| Extra cases | `cargo test --locked --manifest-path benchmarks/twelve-dollar/Cargo.toml -p h12tiny-app --test robustness` | all tests pass | any failure; flaky tests are fixed, not retried |
 | One-command runner | `bash benchmarks/twelve-dollar/run.sh setup && run.sh test --profile box && run.sh smoke --profile box --mode nginx` from a clean `.work/twelve-dollar/` | exits 0 end to end | a manual step is needed |
 | Real measurements | M1, M2, M3 outputs | smoke, a sweep, and two 5-minute confirmations per mode, each valid under D9 | a number without a saved k6 summary |
 | Nginx versus direct | report table: score, throughput, p50/p95/p99, failure rate, CPU/request (app only, nginx only, combined), utilization of the 1 CPU, peak RSS and cgroup peak, peak connections, DB and WAL growth | both modes present, application-only and application-plus-nginx labelled apart | modes mixed or a field missing |
 | Attribution | M4 table and the bottleneck verdict (HTTP and connections, router and allocation, JWT and JSON, SQLite read, SQLite write contention, scheduler, memory, network and proxy) | one named dominant limit with the numbers behind it | a verdict without a measurement |
 | Report | `REPORT.md` answers: concurrent users supported locally; nginx versus direct; CPU/request, throughput, tail latency, memory; whether the limit is h12tiny, SQLite, auth, or the runtime; whether more h12tiny work would help materially; the matched Axum comparison | each question answered with a figure or "not measured, reason" | speculation presented as a result |
 | Isolation | `sh scripts/check-normal-dependencies.sh`; `cargo package --list --allow-dirty \| rg '^benchmarks/'` empty; the forbidden-crate `cargo tree` check; `git -C .work/twelve-dollar/challenge status --porcelain` empty | all clean | any hit |
-| Library gates, only if library code changed | per touched crate: its tests and `cargo clippy -p <crate> --all-features`; then once at close `scripts/check-features.sh`, `sh scripts/check-msrv.sh`, `scripts/miri-io.sh` if the I/O adapter changed, and the fork checks in [verification](verification.md) if a fork changed | green | red; report the cost before running the heavy ones |
+| Library gates, only if library code changed | per touched crate: its tests and `cargo clippy -p <crate> --all-features`; then once at close `scripts/check-features.sh`, `sh scripts/check-msrv.sh`, `scripts/miri-io.sh` if the I/O adapter changed, and the fork checks in [verification](h12tiny/verification.md) if a fork changed | green | red; report the cost before running the heavy ones |
 
 Success is a locally measured, reproducible result. A server that cannot be measured because a resource is missing is reported with exactly what blocked it, never with an estimate.
 
-## Needs environment
+### Needs environment
 
 - **Native x86-64 Ubuntu 24.04 box with 1 vCPU, 2 GB RAM, and no swap**, with the generator on a separate machine over a low-latency LAN: copy the repo, run the `box/*.sh` scripts directly as `deploy`-style user, and compare only against that run. Local results are never leaderboard-comparable.
 - **Several load generators** to go past the local ceiling (the leaderboard's top scores exceed what one generator and one source address can hold).
 - Any item parked by D9 ("perf gate deferred: host busy"): rerun when `perf-gate-ready` exits 0.
-- **M2 nginx confirmation.** Search completed under `819cab9`: warm-up and 2.5k, 5k, 10k and 14k probes all passed. One 14,000-VU 5-minute hold is valid (`20261102T003311Z-nginx-confirm-14000vu-6`: 1,307 req/s, p50 0.289 ms, p95 0.877 ms, p99 1.384 ms, 0 failures, 75 µs app, 107 µs combined). Two further holds were invalid only on the post-run gate (`...-7`, `...-8`: 0 failures and exact request counts), because other sessions ran `worldlab` and `rustc` at 100–1,084 % and load reached 13.46. One more valid hold is needed. The `tools/search.sh` gate-deferral fix is left uncommitted so HEAD stays at `819cab9` for the confirm's revision check; commit it after the hold, or committing earlier forces a full search rerun.
+- **M2 nginx confirmation.** One 14,000-VU hold was valid at `819cab9`; two further holds were invalid because the post-run gate detected host contention. The search gate fix was subsequently committed in `0a9fe6d`, and the benchmark has changed since. Repeat the search and both holds on the selected current revision when the host is free.
 
-## Execution boundary and non-goals
+### Execution boundary and non-goals
 
 **Authorized:** create and edit files under `benchmarks/twelve-dollar/`, the one-line `exclude` change to the root `Cargo.toml`, and library fixes or kept optimizations as described; clone the challenge repo once into `.work/twelve-dollar/challenge` and generate the seed there (its own `.gitignore` covers the outputs); run `docker` for `h12t-twelve-*` resources and pull the two pinned images and apt/rustup/crates.io packages inside containers; run the unchanged k6 against containers on this machine; commit locally to `main` in reviewable commits. Timed runs are expected to take about 1.5 h per mode (probes about 3.5 min each, holds about 6.5 min each); this is authorized. Scratch and worktrees live under `.work/`, never `/tmp`.
 
@@ -154,13 +137,24 @@ Success is a locally measured, reproducible result. A server that cannot be meas
 
 **Contract changes:** none planned. Root `exclude` only changes packaging.
 
-**Needs owner (does not block the campaign):** whether `Serve::production()` should stop applying its 10 s header-read timeout to idle keep-alive connections. Recommendation: document it in [limits](limits.md) and add a separate idle-timeout bound later; the campaign only reports it.
+**Needs owner (does not block the campaign):** whether `Serve::production()` should stop applying its 10 s header-read timeout to idle keep-alive connections. Recommendation: document it in [limits](h12tiny/limits.md) and add a separate idle-timeout bound later; the campaign only reports it.
 
-## Reference: verified code map
+### Reference: verified code map
 
 - Server entry points and bounds: `crates/h12tiny-server/src/lib.rs:26` re-exports `serve`, `ProductionBounds`; `lifecycle.rs:85-101` defines the bounds and defaults; `:249` `production`, `:264` `with_bounds`; `:332-340` `configure_builder` installs the timer and header timeout.
 - Router: `crates/h12tiny-web/src/lib.rs` has `Router::fallback` (`:1197`), `body_limit` (`:1188`), `production` (`:1116`), `Path<T>` (`:544`).
 - Existing runnable pattern for an executor, listener, and router: `examples/router-server.rs`.
 - Facade exports used by that example: `h12tiny::{io, runtime, server, web}` in `src/lib.rs`.
-- Prior in-repo performance method (CPU per request, A/B discipline): [performance/README.md](performance/README.md).
+- Prior in-repo performance method (CPU per request, A/B discipline): [performance report](h12tiny/performance/README.md).
 - Challenge sources of truth: `SPEC.md`, `test/test.sh`, `bench/load.js`, `bench/nginx.conf`, `seed/make-seed.sh`, `schema.sql`, and the scoring rules in the challenge `README.md` and `LEADERBOARD.md`, all in `.work/twelve-dollar/challenge/`.
+
+## Later
+
+- H12T-12, H12T-14, H12T-15: revisit production invariants for retry, driver errors, limits, draining and TLS trust against current behavior.
+- No ticket recorded: qualify protocol conformance, interoperability and fault handling using external tools and reproducible cases.
+- No ticket recorded: independently verify staged release consumption and controlled latency and memory baselines.
+- No ticket recorded: improve Hyper API documentation, examples and guides.
+- No ticket recorded: assess higher-level Hyper client, proxy helpers, automatic protocol selection and builder patterns for this fork's consumers.
+- No ticket recorded: assess HTTP/3 integration and QUIC abstraction for the fork.
+- No ticket recorded: assess stable Hyper event and metrics observability.
+- No ticket recorded: decide whether `Serve::production()` needs a separate idle keep-alive bound.

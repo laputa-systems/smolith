@@ -19,7 +19,7 @@ HIPs establish a predictable, written‑first process for proposing and evaluati
 
 hyper's existing contribution process does not adequately support proposals for large features and design changes.
 
-Much of the shape of hyper can be seen in the [VISION](../VISION.md) and [1.0 ROADMAP](../ROADMAP-1.0.md). Adding new small features is very easy. However, designing large new systems in hyper must be handled with care. hyper is deployed at massive scale. The stability promise requires we be deliberate with what API to expose.
+Much of the shape of hyper can be seen in the [VISION](../VISION.md) and the [HTTP architecture](../../../../docs/h12tiny/architecture.md). Adding new small features is very easy. However, designing large new systems in hyper must be handled with care. hyper is deployed at massive scale. The stability promise requires we be deliberate with what API to expose.
 
 The current process is to ask people to write up larger designs in an issue. GitHub issues are terrible places to discuss multiple points at once. Or people submit massive pull requests, and the discussion is sprinkled through the code reviews.
 

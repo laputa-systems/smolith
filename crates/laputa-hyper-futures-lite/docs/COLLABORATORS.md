@@ -43,7 +43,7 @@ Collaborators are caretakers of hyper's API. When proposing, discussing, or revi
 	- [Accessors can reveal internal repr](https://seanmonstar.com/micro/20260721-accessors-reveal-internal-repr/)
 - hyper-util is a place to explore first
 	- [Vision: Not quite stable, but utile](./VISION.md#not-quite-stable-but-utile-useful)
-	- [Roadmap: hyper-util](./ROADMAP.md#hyper-util)
+	- [Roadmap: future work](../../../docs/roadmap.md#later)
 - Unstable features
 	- Unstable features are not bound by our stability promise.
 	- We don't just name a crate feature with unstable.

@@ -25,8 +25,7 @@ And the set helps us balance which priorities are more important for our users.
 We combine the usecases with the tenets to come up with a [VISION](./VISION.md)
 that provides a longer-term plan of what hyper _should_ look like.
 
-Finally, we define a [ROADMAP](./ROADMAP.md) that describes what the
-short-term, tactical changes to bring hyper closer in line with the vision.
+The repository [roadmap](../../../docs/roadmap.md) tracks planned work on the fork.
 
 ## Roles
 

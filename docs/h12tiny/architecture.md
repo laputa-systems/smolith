@@ -26,6 +26,11 @@ their default verifier and never depend on each other's TLS code.
 
 ## Protocol and runtime ownership
 
+Hyper 1.0 centers its API on per-protocol connections and separates higher-level
+client and server policy into utilities. Applications supply executor, timer,
+and transport adapters. h12tiny provides the higher-level client and server
+facades for this workspace.
+
 The async client and server use `laputa-hyper-futures-lite` for HTTP framing.
 `laputa-h2-futures-lite` implements parsing, HPACK, flow control, streams,
 SETTINGS, GOAWAY, and request dispatch. h12tiny supplies direct-origin
