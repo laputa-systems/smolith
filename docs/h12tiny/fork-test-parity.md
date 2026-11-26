@@ -7,7 +7,8 @@ row excludes its one upstream-ignored case. The gate compares `--list` with
 `Reference count`, checks the exclusion cap, and refuses `not ported` rows.
 
 Local regressions (`h2_975`, `wake_loss_is_detected`, and the wake-driven
-flow-control exchange) are separate rows and do not inflate inherited counts.
+flow-control exchange) and the local HTTP/1 wire profile suite are separate
+rows and do not inflate inherited counts.
 
 | Fork | Suite | Source file | Reference count | Ported | Excluded | Status | Command | Covering test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -35,6 +36,7 @@ flow-control exchange) are separate rows and do not inflate inherited counts.
 | hyper | client | `tests/client.rs` | 70 | 70 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test client` | - |
 | hyper | server | `tests/server.rs` | 99 | 99 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test server` | - |
 | hyper | integration | `tests/integration.rs` | 14 | 14 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test integration` | - |
+| hyper | HTTP/1 wire profile | `tests/h1_wire_profile.rs` | 11 | 11 | 0 | ported | `cargo test --manifest-path crates/laputa-hyper-futures-lite/Cargo.toml --features full --test h1_wire_profile` | self |
 | fastwebsockets | fastwebsockets | `crates/laputa-fastwebsockets-futures-lite` | 40 | 40 | 0 | ported | `cargo test --manifest-path crates/laputa-fastwebsockets-futures-lite/Cargo.toml --locked --all-features` | self |
 
 Exclusion reasons:

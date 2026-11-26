@@ -232,3 +232,8 @@ required-features = ["full"]
 name = "h1_flush_before_yield"
 path = "tests/h1_flush_before_yield.rs"
 required-features = ["full"]
+
+[[test]]
+name = "h1_wire_profile"
+path = "tests/h1_wire_profile.rs"
+required-features = ["full"]

@@ -64,6 +64,8 @@ enum Kind {
     /// > reliably; the server MUST respond with the 400 (Bad Request)
     /// > status code and then close the connection.
     Eof(bool),
+    #[cfg(feature = "client")]
+    Framed,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -115,6 +117,11 @@ impl Decoder {
         }
     }
 
+    #[cfg(feature = "client")]
+    pub(crate) fn framed() -> Decoder {
+        Decoder { kind: Kind::Framed }
+    }
+
     pub(super) fn new(
         len: DecodedLength,
         h1_max_headers: Option<usize>,
@@ -128,6 +135,11 @@ impl Decoder {
     }
 
     // methods
+
+    #[cfg(feature = "client")]
+    pub(crate) fn is_framed(&self) -> bool {
+        matches!(self.kind, Kind::Framed)
+    }
 
     pub(crate) fn is_eof(&self) -> bool {
         matches!(
@@ -234,6 +246,8 @@ impl Decoder {
                     })
                 }
             }
+            #[cfg(feature = "client")]
+            Kind::Framed => unreachable!("Conn reads framed bodies through their ResponseFraming"),
         }
     }
 

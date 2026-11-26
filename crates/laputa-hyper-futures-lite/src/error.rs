@@ -103,6 +103,8 @@ pub(super) enum Parse {
     Status,
     #[cfg(all(any(feature = "client", feature = "server"), feature = "http1"))]
     Internal,
+    #[cfg(all(feature = "client", feature = "http1"))]
+    Framing,
 }
 
 #[derive(Debug)]
@@ -398,6 +400,11 @@ impl Error {
         Error::new(Kind::ChannelClosed)
     }
 
+    #[cfg(all(feature = "client", feature = "http1"))]
+    pub(super) fn new_framing<E: Into<Cause>>(cause: E) -> Error {
+        Error::new(Kind::Parse(Parse::Framing)).with(cause)
+    }
+
     #[cfg(all(
         any(feature = "client", feature = "server"),
         any(feature = "http1", feature = "http2")
@@ -528,6 +535,8 @@ impl Error {
             Kind::Parse(Parse::Internal) => {
                 "internal error inside Hyper and/or its dependencies, please report"
             }
+            #[cfg(all(feature = "client", feature = "http1"))]
+            Kind::Parse(Parse::Framing) => "response rejected by its framing",
             #[cfg(all(any(feature = "client", feature = "server"), feature = "http1"))]
             Kind::IncompleteMessage => "connection closed before message completed",
             #[cfg(all(any(feature = "client", feature = "server"), feature = "http1"))]

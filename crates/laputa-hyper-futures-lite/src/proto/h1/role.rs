@@ -1211,6 +1211,24 @@ impl Http1Transaction for Client {
 
         *msg.req_method = Some(msg.head.subject.0.clone());
 
+        if let Some(raw) = msg.head.extensions.remove::<crate::ext::Http1RequestHead>() {
+            extend(dst, raw.head());
+            msg.head.headers.clear();
+            return match (raw.body(), msg.body) {
+                (crate::ext::Http1RequestBody::Empty, None) => Ok(Encoder::length(0)),
+                (crate::ext::Http1RequestBody::Length(len), Some(_)) => Ok(Encoder::length(len)),
+                (crate::ext::Http1RequestBody::Length(0), None) => Ok(Encoder::length(0)),
+                (crate::ext::Http1RequestBody::Chunked, Some(_)) => Ok(Encoder::chunked()),
+                (crate::ext::Http1RequestBody::Chunked, None) => {
+                    extend(dst, b"0\r\n\r\n");
+                    Ok(Encoder::length(0))
+                }
+                (crate::ext::Http1RequestBody::Empty, Some(_)) | (crate::ext::Http1RequestBody::Length(_), None) => {
+                    Err(crate::Error::new_user_body("request body does not match its Http1RequestHead framing"))
+                }
+            };
+        }
+
         let body = Client::set_length(msg.head, msg.body);
 
         let init_cap = 30 + msg.head.headers.len() * AVERAGE_HEADER_SIZE;
@@ -1259,6 +1277,16 @@ impl Http1Transaction for Client {
 
     fn is_client() -> bool {
         true
+    }
+
+    fn framed_head(head: http::Response<()>) -> MessageHead<StatusCode> {
+        let (parts, ()) = head.into_parts();
+        MessageHead {
+            version: parts.version,
+            subject: parts.status,
+            headers: parts.headers,
+            extensions: parts.extensions,
+        }
     }
 }
 

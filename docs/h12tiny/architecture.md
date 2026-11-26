@@ -44,6 +44,16 @@ version requirements. Publish any missing runtime and fork dependencies before
 their dependents. See [verification](verification.md). The fork packages keep
 their own manifests and verification commands.
 
+Hyper's HTTP/1 client also takes a per-request wire profile from request
+extensions. `hyper::ext::Http1RequestHead` writes the request line and headers
+byte for byte and frames the body as it declares. `hyper::ext::frame_response`
+replaces Hyper's response parser and body decoders with a caller's
+`ResponseFraming`, which receives every transport read in order, including end
+of stream and read errors before the first response byte, and decides whether
+the connection may carry another request. A request without these extensions is
+framed by Hyper as before. Manganese builds Chromium's HTTP/1.1 wire behavior on
+them; `tests/h1_wire_profile.rs` in the Hyper fork covers both.
+
 Production async code uses Hyper's executor boundary and the core timer
 adapter; it has no Tokio runtime dependency. The blocking client is independent
 of the async stack and uses `std::net` plus optional synchronous Rustls.

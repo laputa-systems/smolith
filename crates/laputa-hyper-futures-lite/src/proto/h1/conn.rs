@@ -76,6 +76,8 @@ where
                 h09_responses: false,
                 #[cfg(feature = "client")]
                 on_informational: None,
+                #[cfg(feature = "client")]
+                response_framing: None,
                 notify_read: false,
                 reading: Reading::Init,
                 writing: Writing::Init,
@@ -239,6 +241,11 @@ where
             }
         }
 
+        #[cfg(feature = "client")]
+        if !T::should_read_first() && self.state.response_framing.is_some() {
+            return self.poll_read_framed_head(cx);
+        }
+
         let msg = match self.io.parse::<T>(
             cx,
             ParseContext {
@@ -336,6 +343,93 @@ where
         Poll::Ready(Some(Ok((msg.head, msg.decode, wants))))
     }
 
+    #[cfg(feature = "client")]
+    fn poll_read_framed_head(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<crate::Result<(MessageHead<T::Incoming>, DecodedLength, Wants)>>> {
+        let framing = self
+            .state
+            .response_framing
+            .as_mut()
+            .expect("a framed head has its framing");
+        let head = match ready!(self.io.parse_framed(cx, framing.as_mut())) {
+            Ok(head) => T::framed_head(head),
+            Err(e) => {
+                self.state.response_framing = None;
+                return self.on_read_head_error(e);
+            }
+        };
+        self.state.cached_headers = None;
+        self.state.h09_responses = false;
+        self.state.on_informational = None;
+        self.state.busy();
+        self.state.version = head.version;
+        self.state.reading = Reading::Body(Decoder::framed());
+        Poll::Ready(Some(Ok((head, DecodedLength::CLOSE_DELIMITED, Wants::EMPTY))))
+    }
+
+    #[cfg(feature = "client")]
+    fn poll_read_framed_body(&mut self, cx: &mut Context<'_>) -> Poll<Option<io::Result<Frame<Bytes>>>> {
+        use super::io::MemRead;
+        use crate::ext::{BodyProgress, TransportRead};
+
+        let mut ended = false;
+        loop {
+            let framing = self
+                .state
+                .response_framing
+                .as_mut()
+                .expect("a framed body has its framing");
+            match framing.poll_body() {
+                Ok(BodyProgress::NeedRead) if ended => {
+                    self.state.response_framing = None;
+                    self.state.reading = Reading::Closed;
+                    self.try_keep_alive(cx);
+                    return Poll::Ready(Some(Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "response framing needs a read after the transport ended",
+                    ))));
+                }
+                Ok(BodyProgress::NeedRead) => {}
+                Ok(BodyProgress::Data(data)) if data.is_empty() => continue,
+                Ok(BodyProgress::Data(data)) => return Poll::Ready(Some(Ok(Frame::data(data)))),
+                Ok(BodyProgress::End { reusable }) => {
+                    self.state.response_framing = None;
+                    if !reusable {
+                        self.state.disable_keep_alive();
+                    }
+                    self.state.reading = Reading::KeepAlive;
+                    self.try_keep_alive(cx);
+                    return Poll::Ready(None);
+                }
+                Err(e) => {
+                    self.state.response_framing = None;
+                    self.state.reading = Reading::Closed;
+                    self.try_keep_alive(cx);
+                    return Poll::Ready(Some(Err(io::Error::other(e))));
+                }
+            }
+            let read = ready!(self.io.read_mem(cx, usize::MAX));
+            let framing = self
+                .state
+                .response_framing
+                .as_mut()
+                .expect("a framed body has its framing");
+            match read {
+                Ok(data) if data.is_empty() => {
+                    ended = true;
+                    framing.receive(TransportRead::Closed);
+                }
+                Ok(data) => framing.receive(TransportRead::Data(&data)),
+                Err(e) => {
+                    ended = true;
+                    framing.receive(TransportRead::Failed(&e));
+                }
+            }
+        }
+    }
+
     fn on_read_head_error<Z>(&mut self, e: crate::Error) -> Poll<Option<crate::Result<Z>>> {
         // If we are currently waiting on a message, then an empty
         // message should be reported as an error. If not, it is just
@@ -367,6 +461,11 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Option<io::Result<Frame<Bytes>>>> {
         debug_assert!(self.can_read_body());
+
+        #[cfg(feature = "client")]
+        if matches!(&self.state.reading, Reading::Body(decoder) if decoder.is_framed()) {
+            return self.poll_read_framed_body(cx);
+        }
 
         let (reading, ret) = match &mut self.state.reading {
             Reading::Body(decoder) => {
@@ -538,6 +637,14 @@ where
             Writing::Init | Writing::KeepAlive | Writing::Closed => (),
         }
 
+        #[cfg(feature = "client")]
+        if self.state.response_framing.is_some() {
+            if !self.io.is_read_blocked() {
+                self.state.notify_read = true;
+            }
+            return;
+        }
+
         if !self.io.is_read_blocked() {
             if self.io.read_buf().is_empty() {
                 match self.io.poll_read_from_io(cx) {
@@ -656,6 +763,10 @@ where
                 {
                     self.state.on_informational =
                         head.extensions.remove::<crate::ext::OnInformational>();
+                    self.state.response_framing = head
+                        .extensions
+                        .remove::<crate::ext::ResponseFramingFactory>()
+                        .map(|factory| factory.create());
                 }
 
                 Some(encoder)
@@ -663,6 +774,9 @@ where
             Err(err) => {
                 self.state.error = Some(err);
                 self.state.writing = Writing::Closed;
+                if !T::should_read_first() {
+                    self.state.close_read();
+                }
                 None
             }
         }
@@ -973,6 +1087,8 @@ struct State {
     /// received.
     #[cfg(feature = "client")]
     on_informational: Option<crate::ext::OnInformational>,
+    #[cfg(feature = "client")]
+    response_framing: Option<Box<dyn crate::ext::ResponseFraming>>,
     /// Set to true when the Dispatcher should poll read operations
     /// again. See the `maybe_notify` method for more.
     notify_read: bool,

@@ -30,6 +30,7 @@
 //!
 //! - **HTTP/1 Reason Phrase**: [`ReasonPhrase`] — Access non-canonical reason phrases in HTTP/1 responses.
 //! - **Informational Responses**: [`on_informational`] — Register callbacks for 1xx HTTP/1 responses on the client.
+//! - **HTTP/1 Wire Control**: [`Http1RequestHead`] and [`frame_response`] — Write an exact request head and parse the response with caller-supplied framing on the client.
 //! - **Header Case Tracking**: Internal types for tracking the original casing and order of headers as received.
 //! - **HTTP/2 Protocol Extensions**: [`Protocol`] — Access the `:protocol` pseudo-header for Extended CONNECT in HTTP/2.
 //!
@@ -64,6 +65,16 @@ pub use informational::on_informational;
 pub(crate) use informational::OnInformational;
 #[cfg(all(feature = "http1", feature = "client", feature = "ffi"))]
 pub(crate) use informational::{on_informational_raw, OnInformationalCallback};
+
+#[cfg(all(feature = "http1", feature = "client"))]
+mod h1_wire;
+#[cfg(all(feature = "http1", feature = "client"))]
+pub use h1_wire::{
+    frame_response, BodyProgress, Http1RequestBody, Http1RequestHead, ResponseFraming,
+    TransportRead,
+};
+#[cfg(all(feature = "http1", feature = "client"))]
+pub(crate) use h1_wire::ResponseFramingFactory;
 
 #[cfg(feature = "http2")]
 /// Extension type representing the `:protocol` pseudo-header in HTTP/2.

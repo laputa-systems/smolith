@@ -228,6 +228,45 @@ where
         }
     }
 
+    #[cfg(feature = "client")]
+    pub(super) fn parse_framed(
+        &mut self,
+        cx: &mut Context<'_>,
+        framing: &mut dyn crate::ext::ResponseFraming,
+    ) -> Poll<crate::Result<http::Response<()>>> {
+        use crate::ext::TransportRead;
+
+        loop {
+            if !self.read_buf.is_empty() {
+                let data = self.read_buf.split().freeze();
+                framing.receive(TransportRead::Data(&data));
+            }
+            match framing.poll_head() {
+                Ok(Some(head)) => return Poll::Ready(Ok(head)),
+                Ok(None) => {}
+                Err(e) => return Poll::Ready(Err(crate::Error::new_framing(e))),
+            }
+            let ended = match ready!(self.poll_read_from_io(cx)) {
+                Ok(0) => {
+                    framing.receive(TransportRead::Closed);
+                    true
+                }
+                Ok(_) => false,
+                Err(e) => {
+                    framing.receive(TransportRead::Failed(&e));
+                    true
+                }
+            };
+            if ended {
+                return Poll::Ready(match framing.poll_head() {
+                    Ok(Some(head)) => Ok(head),
+                    Ok(None) => Err(crate::Error::new_incomplete()),
+                    Err(e) => Err(crate::Error::new_framing(e)),
+                });
+            }
+        }
+    }
+
     pub(crate) fn poll_read_from_io(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         self.read_blocked = false;
         // Get the next amount to allocate, but make sure we don't go over

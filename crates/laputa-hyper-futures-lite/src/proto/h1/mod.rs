@@ -53,6 +53,11 @@ pub(crate) trait Http1Transaction {
         Self::is_server()
     }
 
+    #[cfg(feature = "client")]
+    fn framed_head(_head: http::Response<()>) -> MessageHead<Self::Incoming> {
+        unreachable!("only the client role reads framed responses")
+    }
+
     fn update_date() {}
 }
 
