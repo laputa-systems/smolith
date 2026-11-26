@@ -1,5 +1,5 @@
 Prefix: SMOL
-Next: 28
+Next: 29
 
 HTTP findings use the H12T prefix and stay in [docs/h12tiny/TODO.md](docs/h12tiny/TODO.md). Their numbers are unchanged.
 
@@ -127,5 +127,14 @@ HTTP findings use the H12T prefix and stay in [docs/h12tiny/TODO.md](docs/h12tin
 - **Problem:** The public static_bytes, RequestFactory and replayable_value helpers have no identified workspace callers; published consumers may rely on them.
 - **Recommendation:** Check published consumer use and retain the APIs unless removal is justified.
 - **Fix with:** dead-code-archaeology
+- **Effort:** S
+
+### SMOL-28 · P3 · unbuffered_stream body_test fails under host load
+
+- **Area:** Hyper tests
+- **Where:** crates/laputa-hyper-futures-lite/tests/unbuffered_stream.rs (body_test), crates/laputa-hyper-futures-lite/tests/h1_server/fixture.rs:106
+- **Problem:** `sh scripts/verify-protocols.sh --suite hyper-tests` failed once with "Chunk timeout: chunk took longer than 200ms" while the host ran a Chromium build and a browser; the same suite passed on the immediate rerun and inside `make test`. The fixture bounds each chunk by wall time, so a busy scheduler fails a correct client.
+- **Recommendation:** Replace the 200 ms wall-clock bound with a deadline the test controls, or a bound large enough that only a lost wakeup trips it, and check it by running the suite under CPU contention. Acceptance: the suite passes 20 times in a row on a loaded host.
+- **Fix with:** test-audit
 - **Effort:** S
 
