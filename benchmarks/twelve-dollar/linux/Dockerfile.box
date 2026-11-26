@@ -13,7 +13,6 @@ RUN apk add --no-cache \
     ca-certificates=20261020-r0 \
     curl=8.23.0-r0 \
     iproute2 \
-    jq \
     libgcc=15.2.0-r5 \
     musl-dev=1.2.6-r3 \
     nginx \
